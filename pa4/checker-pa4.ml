@@ -372,6 +372,21 @@ let rec exp_typecheck(o: obj_env)  (exp: expression) : static_type = begin
 	 		printf "ERROR: %s: Type-Check: Undeclared variable %s\n" vloc vname;
 			exit 1
 	 	end
+	| Assign((id_location, id_name), exp) ->
+		if Hashtbl.mem o id_name then 
+            let tid = Hashtbl.find o id_name in 
+            let te = exp_typecheck o exp in 
+            if is_subtype te tid then
+                te
+            else begin
+                printf "ERROR: %s: Assignment does not conform: %s has type %s\n"  id_location id_name (type_to_str tid);
+                exit 1
+        end
+        else begin
+                printf "ERROR: %s: Type-check: undeclared variable %s\n"  id_location id_name;
+                exit 1
+        end
+
 	(*| Let((vloc, vname), (typeloc, typename), None, let_body)-> 
 		(*add vname to O -- add it to current scope *)
 		Hashtbl.add o vname (Class typename) ; (* TODO: SELF_TYPE? *)
@@ -471,8 +486,7 @@ let main () = begin
 		let formal_name = read_id() in
 	    let formal_type = read_id() in 
 	    (formal_name, formal_type)
-	and read_binding () =
-		match read() with
+	and read_binding () = match read() with
 		| "let_binding_init" -> 
 						let id = read_id() in 
 						let init_type = read_id() in 
@@ -482,6 +496,11 @@ let main () = begin
 						let id = read_id() in 
 						let init_type = read_id() in 
 						BindingNoInit(id, init_type)
+	and read_case_element () = 
+		let id = read_id() in 
+		let init_type = read_id() in
+		let e = read_exp() in 
+		CaseElement(id, init_type, e)
 	and read_exp () = 
 		let line_number = read() in
 		let expression_type = match read () with
@@ -577,6 +596,10 @@ let main () = begin
 							let bindings = read_list read_binding in 
 							let e = read_exp() in 
 							Let(bindings, e)
+			| "case" -> 
+							let e = read_exp() in
+							let elements = read_list read_case_element in 
+							Case(e, elements)
 		| x -> (*TODO: other exp *)
 			failwith ("cannot happen:expr " ^x)	
 		in	
