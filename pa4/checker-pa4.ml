@@ -84,7 +84,13 @@ exception MethodRedefineError of string;;
 exception AttributeRedefineError of string;;
 
 let dummy_exp_body = {line_number= "0"; expression_type= String(""); static_type= None;}
+let int_exp_body = {line_number= "0"; expression_type= Integer("0"); static_type= None;}
+let string_exp_body = {line_number= "0"; expression_type= String(""); static_type= None;}
+(* TODO:  length of self *)
+let string_length_exp_body = {line_number = "0"; expression_type= Integer("99"); static_type= None;}
 
+let int_features = [];;
+let bool_features = [];;
 let io_features = [ 
 				Method(("0","out_string"), [(("0","x"),("0","String"))], ("0","SELF_TYPE"), dummy_exp_body);
 				Method(("0","out_int"), [(("0","x"),("0","Int"))], ("0","SELF_TYPE"), dummy_exp_body);
@@ -95,6 +101,11 @@ let obj_features = [
 				Method(("0","abort"), [], ("0","Object"), dummy_exp_body);
 				Method(("0","type_name"), [], ("0","String"), dummy_exp_body);
 				Method(("0","copy"), [], ("0","SELF_TYPE"), dummy_exp_body);
+				];;	
+let string_features = [ 
+				Method(("0","length"), [], ("0","Int"), string_length_exp_body);
+				Method(("0","concat"), [(("0","x"),("0","String"))], ("0","String"), dummy_exp_body);
+				Method(("0","substr"), [(("0","i"),("0","Int"));(("0","l"),("0","Int"))], ("0","String"), dummy_exp_body);
 				];;	
 
 (* Lists all parent classes of a given class in given ast list (including IO and Object) *)
@@ -419,7 +430,95 @@ in
 end;;
 
 
+let topo_sort vertices = begin
 
+    (*let vertices = List.map (fun ((_,cls_name),_,_) -> cls_name) ast in*)
+
+    let deg = Hashtbl.create 64 in
+
+    (* counting the number of incoming edges *)
+    List.iter (fun (v, d) -> 
+            let cur = Hashtbl.find_opt deg v in
+            match cur with 
+            | None -> Hashtbl.replace deg v 1
+            | degree -> Hashtbl.replace deg v (Option.get degree + 1);
+    ) vertices ;
+
+    (* adding missing vertices. Init them with 0 degree *)
+    List.iter (fun (v, d) -> 
+            let missing_vert = Hashtbl.find_opt deg d in
+            match missing_vert with 
+            | None -> Hashtbl.replace deg d 0
+            | _ -> ();
+    ) vertices ;
+
+    (* find starting point  *)
+    let topo = ref (Hashtbl.fold (fun v d acc -> 
+            if d = 0 then v :: acc else acc
+    ) deg []) in
+
+
+
+    (* traverse the graph *)
+    let result = ref [] in
+    while (List.length !topo) > 0 do
+            let sorted = List.sort compare !topo in
+            topo := sorted;
+            let hd = List.hd !topo in
+            (* printf "head %s\n" head; *)
+            (*List.iter (fun x ->*)
+                (* printf "topo %s\n" x; *)
+            (* !topo;*)
+            result := hd :: !result;
+            List.iter (fun (in_, out) ->
+                    if hd = out then begin
+                            let d = Option.get (Hashtbl.find_opt deg in_) in
+                            Hashtbl.replace deg in_ (d-1);
+                            if (d-1) = 0 then begin
+                                    topo := in_ :: !topo
+                            end;
+                    end;
+            ) vertices;
+            let new_topo = List.filter (fun x -> 
+                            x <> hd) !topo in
+            topo := new_topo
+    done;
+    Hashtbl.iter (fun v d -> 
+            if (d != 0) then begin
+                (* TODO: add more details about the cycle *)
+                printf "ERROR: 0: Type-Check: inheritance cycle: %s\n" v;
+                exit 1
+            end;
+    ) deg ;
+
+    !result;
+end;;
+
+let add_missing_edges vertices = begin
+    let result = ref vertices in
+    let missed_classes = ["Bool"; "Int"; "IO"; "String"] in 
+    List.iter (fun cls ->
+       result := ("Object", cls) :: !result
+    ) missed_classes;
+    !result;
+end;;
+
+let get_ast_with_base_classes ast base_classes = begin
+        let ast_with_base_classes = ref ast in
+        let obj_name = "Object" in
+        let unused_location = "-1" in
+        List.iter (fun class_name ->
+                let initialized_class = match class_name with
+                | "Bool" -> ((unused_location, class_name), Some(unused_location, obj_name), bool_features)
+                | "Int" -> ((unused_location, class_name), Some(unused_location, obj_name), int_features)
+                | "IO" -> ((unused_location, class_name), Some(unused_location, obj_name), io_features)
+                | "String" -> ((unused_location, class_name), Some(unused_location, obj_name), string_features)
+                | "Object" -> ((unused_location, class_name), None, obj_features)
+                in
+                ast_with_base_classes := initialized_class :: !ast_with_base_classes
+        ) base_classes ;
+        ! ast_with_base_classes
+end;;
 let main () = begin 
 
 	(* De-Serialize the cl-ast file *)
@@ -638,10 +737,11 @@ let main () = begin
 	(* Consolidated List of User and Base classes *)
     (* This adds the bases classes to our class inheritence mapping so that they aren't treated as
 -	undeclared classes. *)
-    let base_classes = ["Bool"; "IO"; "Int"; "String"; "Object"] in
-    let user_classes = List.map (fun ((_,cname),_,_) -> cname) ast in
+        let base_classes = ["Bool"; "IO"; "Int"; "String"; "Object"] in
+        let user_classes = List.map (fun ((_,cname),_,_) -> cname) ast in
 	let all_classes = base_classes @ user_classes in
 	let all_classes = List.sort compare all_classes in
+        let vertices = ref [] in
 
 	(* Check of Main class, else return *)
 	if not (List.mem "Main" user_classes) then begin
@@ -938,7 +1038,114 @@ let main () = begin
 			(* TODO: create impl. list *)
 		) methods;
 
-	) all_classes
+        ) all_classes ;
+		(*let class_identifier = read_id() in *)
+		(*let inherits = match read() with*)
+		(*| "no_inherits" -> None*)
+		(*| "inherits" -> *)
+			(*let super = read_id() in*)
+			(*Some(super)*)
+		(*| x -> failwith ("cannot happen:inherits " ^x)*)
+		(*in *)
+		(*let features = read_list read_feature in *)
+		(*(class_identifier, inherits, features)*)
+
+        (* create fill ast list with base classes *)
+        (*let ast_with_base_classes = ref ast in*)
+        (*let obj_name = "Object" in*)
+        (*let unused_location = "-1" in*)
+        (*List.iter (fun class_name ->*)
+                (*let initialized_class = match class_name with*)
+                (*| "Bool" -> ((unused_location, class_name), Some(unused_location, obj_name), bool_features)*)
+                (*| "Int" -> ((unused_location, class_name), Some(unused_location, obj_name), int_features)*)
+                (*| "IO" -> ((unused_location, class_name), Some(unused_location, obj_name), io_features)*)
+                (*| "String" -> ((unused_location, class_name), Some(unused_location, obj_name), string_features)*)
+                (*| "Object" -> ((unused_location, class_name), None, obj_features)*)
+                (*in*)
+                (*ast_with_base_classes := initialized_class :: !ast_with_base_classes*)
+        (*) base_classes ;*)
+
+        let ast_with_base_classes = get_ast_with_base_classes ast base_classes in
+
+        let get_number_of_methods lst = 
+                let num = ref 0 in
+                List.iter (fun ((_,_),_,features) ->
+                        num := (List.length features) + !num
+                ) lst ;
+                !num 
+        in
+
+        List.iter (fun ((cls_loc, cls_name), inherits, features) ->
+                match inherits with
+                | None -> begin 
+                    vertices := ("Object", cls_name) :: !vertices;
+                    ()
+                end;
+                | Some(inh_loc, inh_name) -> 
+                                vertices := (inh_name, cls_name) :: !vertices;
+        ) ast ;
+        vertices := add_missing_edges !vertices;
+        let sorted_classes = topo_sort !vertices in
+
+        (*List.iter (fun cls -> *)
+                (*printf "%s\n" cls*)
+        (*) sorted_classes ;*)
+
+        let output_parent_methods super_class super_features current_class current_features =
+                List.iter (fun super_method ->
+                        match super_method with
+                        | Attribute _ -> ()
+                        | Method ((_,method_name), formals, method_type, exp) -> begin
+                                fprintf f_out "%s\n" method_name;
+                                fprintf f_out "%d\n" (List.length formals);
+                                (* TODO: formals *)
+                                if (List.mem super_method current_features) then 
+                                        fprintf f_out "%s\n" current_class
+                                else
+                                        fprintf f_out "%s\n" super_class;
+                                if not (exp.static_type = None) then output_exp exp
+                        end
+                ) super_features in
+
+	fprintf f_out "implementation_map\n%d\n" (List.length all_classes);
+	(* Iterate over all classes *)
+	List.iter (fun class_name ->
+                fprintf f_out "%s\n" class_name;
+                let super_class_list = get_super_classes class_name ast_with_base_classes [] in
+                
+                let (_,inherits,features) = List.find (fun ((_,cname),_,_)-> class_name = cname) ast_with_base_classes in
+                List.iter (fun target_class ->
+                        
+                        let option_super_class = List.find_opt (fun ((_,cname),_,_)-> target_class = cname) super_class_list in
+                        if not (option_super_class = Option.none) then begin
+                                let ((_, super_class_name),_,super_features) = (Option.get option_super_class) in
+                                output_parent_methods super_class_name super_features class_name features;
+                        end
+                ) sorted_classes ;
+                fprintf f_out "%d\n" ((get_number_of_methods super_class_list) + (List.length features));
+                (*fprintf f_out "%s\n" super_class_name;*)
+                        
+        ) all_classes ;
+
+	fprintf f_out "parent_map\n%d\n" (List.length all_classes - 1);
+	(* Iterate over all classes *)
+	List.iter (fun class_name ->
+                let obj_name = "Object" in
+                        if not (obj_name = class_name) 
+                                then fprintf f_out "%s\n" class_name;
+                
+                if (List.mem class_name base_classes) then begin
+                        if not (obj_name = class_name) 
+                                then fprintf f_out "%s\n" obj_name
+                end else begin
+                        let (_,inherits,_) = List.find (fun ((_,cname),_,_)-> class_name = cname) ast in
+                        match inherits with
+                        | None -> 
+                                fprintf f_out "%s\n" obj_name
+                        | Some(_, iname) ->
+                                fprintf f_out "%s\n" iname
+                end
+        ) all_classes ;
 
 
 end ;;
