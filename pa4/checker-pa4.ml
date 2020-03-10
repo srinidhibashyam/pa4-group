@@ -16,11 +16,16 @@ let type_to_str t = match t with
 (* Int <= Object *)
 (* String <= String *)
 (* Dog <= Animal if Dog inherits Animal *)
+let parent_map = Hashtbl.create 255;;
+
 let rec is_subtype t1 t2 =    (*checking if t1 is subtype of t2*)
 	match t1, t2 with
 	| Class(x), Class(y) when x=y -> true  (*like String <= String*)
 	| Class(x), Class("Object") -> true  (*this is always true in Cool*)
-	| Class(x), Class(y) -> (*TODO: check the parent map*) false  
+	| Class(x), Class(y) -> 
+		(* check the parent map *)
+		let parents = Hashtbl.find parent_map y in
+		(List.mem x parents)
 	| _, _ -> (*TODO: check the class note like for SELF_TYPE*) false   
 
 (* mapping from object identifier (names) to types *)
@@ -648,6 +653,15 @@ let main () = begin
 		printf "ERROR: 0: Type-Check: class Main not found\n";
 		exit 1
 	end;
+
+	(* populate parent map *)
+	List.iter(fun current_class ->
+		let ((class_line_number, class_name), inherits, features) = current_class in
+		let parents = get_super_classes class_name ast [] in
+		let parents_names = List.map (fun ((_,cname),_,_) -> cname) parents in
+		Hashtbl.add parent_map class_name parents_names;
+	) ast;
+
 
 	(* Look for errors in Class Declarations*)	
 	let declared_classes = ref [] in
