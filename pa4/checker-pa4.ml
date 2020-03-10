@@ -428,7 +428,41 @@ let rec exp_typecheck(o: obj_env)  (exp: expression) : static_type = begin
                 printf "ERROR: %s: Type-check: undeclared variable %s\n"  id_location id_name;
                 exit 1
         end
-
+    | If(predicate, then_exp, else_exp) ->
+    	let predicate_type = exp_typecheck o predicate in
+    	if predicate_type <> (Class "Bool") then begin
+    		printf "ERROR: %s: If statement's predicate expects type Bool, not type %s\n" exp.line_number (type_to_str predicate_type);
+    		exit 1
+    	end
+    	else
+    		let then_exp_type = exp_typecheck o then_exp in 
+    		let else_exp_type = exp_typecheck o else_exp in
+    			lowest_upper_bound then_exp_type else_exp_type
+    | Block(exps) ->
+    	let list_type = ref (Class "Object") in 
+    	let check_type = List.iter(fun e -> 
+        		list_type := exp_typecheck o e
+    	) exps in 
+    		!list_type
+    | Let(bindings, exp) ->
+    	let previous_o = o in  
+    	let check_type = List.iter(
+    		fun binding -> 
+    			match binding with 
+    			| BindingNoInit((id_location, id_name), (type_location, init_type)) -> 
+    					Hashtbl.add o id_name (Class init_type)
+    			| BindingInit((id_location, id_name), (type_location, init_type), init_exp) ->
+    					let init_exp_type = exp_typecheck o init_exp in 
+    						if is_subtype init_exp_type (Class init_type) then 
+    							Hashtbl.add o id_name (Class init_type)
+    						else begin
+    							printf "ERROR: %s: Type-Check: initializer for %s was %s, did not match declared %s\n" exp.line_number id_name (type_to_str init_exp_type) init_type;
+    							exit 1
+    						end
+    	)bindings in
+    		let let_exp_type = exp_typecheck o exp in
+    			o = previous_o;
+    			let_exp_type
 	(*| Let((vloc, vname), (typeloc, typename), None, let_body)-> 
 		(*add vname to O -- add it to current scope *)
 		Hashtbl.add o vname (Class typename) ; (* TODO: SELF_TYPE? *)
