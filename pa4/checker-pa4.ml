@@ -1106,38 +1106,114 @@ let main () = begin
                 (*printf "%s\n" cls*)
         (*) sorted_classes ;*)
 
-        let output_parent_methods super_class super_features current_class current_features =
-                List.iter (fun super_method ->
-                        match super_method with
+        let does_method_exist_in_list target_method_name feature_list =
+                let result = ref false in
+                List.iter (fun feature ->
+                        match feature with
+                        | Attribute _ -> ()
+                        | Method ((_,method_name), _, _, _) -> begin
+                                if method_name = target_method_name then
+                                        result := true;
+                                        ()
+                        end
+                ) feature_list ;
+                !result
+        in
+
+        let output_formal_name formals =
+                List.iter( fun ((_, formal_name),_) ->
+                        fprintf f_out "%s\n" formal_name
+                ) formals                 
+        in
+
+        (* retreive the hashtable with method name as a key and tuple (formals, class_name, exp) as a value.
+         * It is needed to conveniently print out implementation map. 
+         * What it does? it itrates over class names (that are in topological order) and saves all
+         * methods that it declares and override.*)
+        let get_parents_methods_tbl class_names super_class_list =
+                let methods_map = Hashtbl.create 255 in
+                List.iter (fun class_name ->
+                        let super_class_option = List.find_opt (fun ((_,cname),_,_)-> class_name = cname) super_class_list in
+                        if not (Option.none = super_class_option) then begin
+                                let ((_, _),_,features) = Option.get super_class_option in
+                                (* add methods to hashtbl starting from the ultimate class that override method *)
+                                List.iter (fun current_method ->
+                                        match current_method with
+                                        | Attribute _ -> ()
+                                        | Method ((_,method_name), formals, method_type, exp) -> begin
+                                                let cur = Hashtbl.find_opt methods_map method_name in
+                                                match cur with 
+                                                | None -> Hashtbl.replace methods_map method_name (formals, class_name, exp);
+                                                | _ -> () 
+                                        end
+                                ) features ;
+                        end;
+                ) class_names ;
+                methods_map
+        in
+
+        (* get sorted list of names from a hastable *)
+        let get_method_names_from_tbl tbl =
+                let parents_method_list = ref (Hashtbl.fold (fun method_name value acc -> 
+                                        method_name :: acc 
+                ) tbl []) in
+                List.sort compare !parents_method_list
+        in
+
+        (* Output each method in turn (in order of appearance, with inherited or overridden methods from a superclass coming first; internal methods are defined to appear in ascending alphabetical order) *)
+        let output_parent_methods parents_methods_tbl  =
+                let sorted_methods = get_method_names_from_tbl parents_methods_tbl in
+                List.iter (fun method_name ->
+                        let formals, owner_class, exp = (Hashtbl.find parents_methods_tbl method_name) in
+                        fprintf f_out "%s\n" method_name;
+                        fprintf f_out "%d\n" (List.length formals);
+                        output_formal_name formals;
+                        fprintf f_out "%s\n" owner_class;
+                        fprintf f_out "!TODO: expression\n";
+                ) sorted_methods
+        in
+
+        (* print out methods of the current class in the order they appear in source filess *)
+        let output_own_methods current_class own_features parents_method_list = 
+                List.iter (fun current_method ->
+                        match current_method with
                         | Attribute _ -> ()
                         | Method ((_,method_name), formals, method_type, exp) -> begin
                                 fprintf f_out "%s\n" method_name;
                                 fprintf f_out "%d\n" (List.length formals);
-                                (* TODO: formals *)
-                                if (List.mem super_method current_features) then 
-                                        fprintf f_out "%s\n" current_class
-                                else
-                                        fprintf f_out "%s\n" super_class;
-                                if not (exp.static_type = None) then output_exp exp
+                                output_formal_name formals;
+                                if not (List.mem method_name parents_method_list) then begin
+                                        fprintf f_out "%s\n" current_class;
+                                        if not (exp.static_type = None) then output_exp exp
+                                        else fprintf f_out "expression is None\n"
+                                end;
                         end
-                ) super_features in
+                ) own_features
+        in
 
 	fprintf f_out "implementation_map\n%d\n" (List.length all_classes);
 	(* Iterate over all classes *)
 	List.iter (fun class_name ->
+                (* output the class name *)
                 fprintf f_out "%s\n" class_name;
                 let super_class_list = get_super_classes class_name ast_with_base_classes [] in
                 
                 let (_,inherits,features) = List.find (fun ((_,cname),_,_)-> class_name = cname) ast_with_base_classes in
-                List.iter (fun target_class ->
-                        
-                        let option_super_class = List.find_opt (fun ((_,cname),_,_)-> target_class = cname) super_class_list in
-                        if not (option_super_class = Option.none) then begin
-                                let ((_, super_class_name),_,super_features) = (Option.get option_super_class) in
-                                output_parent_methods super_class_name super_features class_name features;
-                        end
-                ) sorted_classes ;
                 fprintf f_out "%d\n" ((get_number_of_methods super_class_list) + (List.length features));
+                (* output the number of methods *)
+                let map = get_parents_methods_tbl (List.rev sorted_classes) super_class_list in
+                (*fprintf f_out "size: %d " (Hashtbl.length map);*)
+                let parents_methods_tbl = map in
+                output_parent_methods parents_methods_tbl;
+                let sorted_method_list = get_method_names_from_tbl parents_methods_tbl in
+                output_own_methods class_name features sorted_method_list;
+                (*List.iter (fun target_class ->*)
+                        (*let option_super_class = List.find_opt (fun ((_,cname),_,_)-> target_class = cname) super_class_list in*)
+                        (*if not (option_super_class = Option.none) then begin*)
+                                (*let ((_, super_class_name),_,super_features) = (Option.get option_super_class) in*)
+                                (*output_parent_methods super_class_name super_features class_name features;*)
+                        (*end*)
+                (*) sorted_classes ;*)
                 (*fprintf f_out "%s\n" super_class_name;*)
                         
         ) all_classes ;
