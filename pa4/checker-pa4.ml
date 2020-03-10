@@ -1039,31 +1039,6 @@ let main () = begin
 		) methods;
 
         ) all_classes ;
-		(*let class_identifier = read_id() in *)
-		(*let inherits = match read() with*)
-		(*| "no_inherits" -> None*)
-		(*| "inherits" -> *)
-			(*let super = read_id() in*)
-			(*Some(super)*)
-		(*| x -> failwith ("cannot happen:inherits " ^x)*)
-		(*in *)
-		(*let features = read_list read_feature in *)
-		(*(class_identifier, inherits, features)*)
-
-        (* create fill ast list with base classes *)
-        (*let ast_with_base_classes = ref ast in*)
-        (*let obj_name = "Object" in*)
-        (*let unused_location = "-1" in*)
-        (*List.iter (fun class_name ->*)
-                (*let initialized_class = match class_name with*)
-                (*| "Bool" -> ((unused_location, class_name), Some(unused_location, obj_name), bool_features)*)
-                (*| "Int" -> ((unused_location, class_name), Some(unused_location, obj_name), int_features)*)
-                (*| "IO" -> ((unused_location, class_name), Some(unused_location, obj_name), io_features)*)
-                (*| "String" -> ((unused_location, class_name), Some(unused_location, obj_name), string_features)*)
-                (*| "Object" -> ((unused_location, class_name), None, obj_features)*)
-                (*in*)
-                (*ast_with_base_classes := initialized_class :: !ast_with_base_classes*)
-        (*) base_classes ;*)
 
         let ast_with_base_classes = get_ast_with_base_classes ast base_classes in
 
