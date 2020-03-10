@@ -28,9 +28,31 @@ let rec is_subtype t1 t2 =    (*checking if t1 is subtype of t2*)
 			let parents = Hashtbl.find parent_map x in
 			(List.mem y parents)
 		with
-		| _ -> false
+		| _ -> false (* x is undefined- Int, String, Bool*)
 		end
 	| _, _ -> (*TODO: check the class note like for SELF_TYPE*) false   
+
+exception LowerBoundFound of string;;
+
+let rec lowest_upper_bound t1 t2 =
+	if (is_subtype t1 t2) then t2 
+	else if (is_subtype t2 t1) then t1 
+	else begin
+		try
+			let x = type_to_str t1 in
+			(* get parent maps of t1 and t2 *)
+			let t1_parents = Hashtbl.find parent_map x in
+			(* Iterate through t1_parents and find the lowest match in t2_parents*)
+			List.iter(fun cls ->
+				if (is_subtype t2 (Class cls)) then raise (LowerBoundFound cls) 
+			) t1_parents;
+			(Class "Object"); (* should not reach this; but for completion, return object*)	
+
+		with
+			| LowerBoundFound(bound) -> (Class bound)
+			| _ -> (Class "Object")(* undefined - Int, String, Bool -> return object*)	
+	end
+
 
 (* mapping from object identifier (names) to types *)
 type obj_env = (string, static_type) Hashtbl.t
