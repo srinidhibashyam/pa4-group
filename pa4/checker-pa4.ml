@@ -22,10 +22,14 @@ let rec is_subtype t1 t2 =    (*checking if t1 is subtype of t2*)
 	match t1, t2 with
 	| Class(x), Class(y) when x=y -> true  (*like String <= String*)
 	| Class(x), Class("Object") -> true  (*this is always true in Cool*)
-	| Class(x), Class(y) -> 
-		(* check the parent map *)
-		let parents = Hashtbl.find parent_map y in
-		(List.mem x parents)
+	| Class(x), Class(y) -> begin
+		(*check the parent map*)
+		try
+			let parents = Hashtbl.find parent_map x in
+			(List.mem y parents)
+		with
+		| _ -> false
+		end
 	| _, _ -> (*TODO: check the class note like for SELF_TYPE*) false   
 
 (* mapping from object identifier (names) to types *)
