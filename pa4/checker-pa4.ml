@@ -428,31 +428,39 @@ let rec exp_typecheck(o: obj_env)  (exp: expression) : static_type = begin
                 printf "ERROR: %s: Type-check: undeclared variable %s\n"  id_location id_name;
                 exit 1
         end
-
-	(*| Let((vloc, vname), (typeloc, typename), None, let_body)-> 
-		(*add vname to O -- add it to current scope *)
-		Hashtbl.add o vname (Class typename) ; (* TODO: SELF_TYPE? *)
-		(*We check the let body with bound variable added to obj env*)
-		let body_type = exp_typecheck o let_body in
-		(*remove vname from O -- after the current scope *)
-		Hashtbl.remove o vname;
-		body_type;
-	| Let((vloc, vname), (typeloc, typename), Some(init_exp), let_body)-> 
-		(* TODO: SELF_TYPE? *)
-		(* init exp - subtype check*)
-		let init_type = exp_typecheck o init_exp in
-		if not (is_subtype init_type (Class typename)) then begin
-			printf "ERROR: %s: Type-Check: initializer for %s was %s, did not match declared %s\n" 
-				exp.line_number vname (type_to_str init_type) typename ;
-			exit 1
-		end;
-		(*add vname to O -- add it to current scope *)
-		Hashtbl.add o vname (Class typename) ; (* TODO: SELF_TYPE? *)	
-		(*We chek the let body with bound variable added to obj env*)
-		let body_type = exp_typecheck o let_body in
-		(*remove vname from O -- after the current scope *)
-		Hashtbl.remove o vname;
-		body_type;*)
+	| If(predicate, then_exp, else_exp) ->
+    	let predicate_type = exp_typecheck o predicate in
+    	if predicate_type <> (Class "Bool") then begin
+    		printf "ERROR: %s: If statement's predicate expects type Bool, not type %s\n" exp.line_number (type_to_str predicate_type);
+    		exit 1
+    	end
+    	else
+    		let then_exp_type = exp_typecheck o then_exp in 
+    		let else_exp_type = exp_typecheck o else_exp in
+    			lowest_upper_bound then_exp_type else_exp_type
+    | Block(exps) ->
+    	let list_type = ref (Class "Object") in 
+    	let check_type = List.iter(fun e -> 
+        		list_type := exp_typecheck o e
+    	) exps in 
+    		!list_type
+    | Let(bindings, exp) ->
+    	let new_o = o in  
+		List.iter(fun binding -> 
+			match binding with 
+			| BindingNoInit((id_location, id_name), (type_location, init_type)) -> 
+				Hashtbl.add new_o id_name (Class init_type)
+			| BindingInit((id_location, id_name), (type_location, init_type), init_exp) ->
+				let init_exp_type = exp_typecheck o init_exp in 
+					if is_subtype init_exp_type (Class init_type) then 
+						Hashtbl.add new_o id_name (Class init_type)
+					else begin
+						printf "ERROR: %s: Type-Check: initializer for %s was %s, did not match declared %s\n" 
+							id_location id_name (type_to_str init_exp_type) init_type;
+						exit 1
+					end
+		)bindings;
+		exp_typecheck new_o exp
 in
 	(* annotate AST with the new-found static type *)
 	exp.static_type <- Some(static_type); (* Node => havent done tc, Some => done with tc *)
@@ -739,26 +747,6 @@ let main () = begin
 			static_type = None; (*not annotated it yet*)
 		}
 
-	(* and read_let_body (number_of_bindings) (line_number) =
-		if number_of_bindings <= 1 then begin		
-			read_exp ()
-		end else begin
-			let lbni = read () in  (*let_binding_no_init/let_binding_init*)
-			let let_variable = read_identifier () in 
-			let let_type = read_identifier () in
-			let init = match lbni with
-				| "let_binding_no_init" -> None
-				| "let_binding_init" -> Some(read_exp())
-				| x -> failwith ("unknown let binding: " ^x) in 
-			let let_body = read_let_body (number_of_bindings-1) line_number in 
-			let next_let_exp_type = Let(let_variable, let_type, init, let_body) in
-			{
-				line_number = line_number;
-				expression_type = next_let_exp_type;
-				static_type = None; (*not annotated it yet*)
-			}
-		end; *)
-
 	in
 
 
@@ -768,11 +756,11 @@ let main () = begin
 	(* Consolidated List of User and Base classes *)
     (* This adds the bases classes to our class inheritence mapping so that they aren't treated as
 -	undeclared classes. *)
-        let base_classes = ["Bool"; "IO"; "Int"; "String"; "Object"] in
-        let user_classes = List.map (fun ((_,cname),_,_) -> cname) ast in
+    let base_classes = ["Bool"; "IO"; "Int"; "String"; "Object"] in
+    let user_classes = List.map (fun ((_,cname),_,_) -> cname) ast in
 	let all_classes = base_classes @ user_classes in
 	let all_classes = List.sort compare all_classes in
-        let vertices = ref [] in
+    let vertices = ref [] in
 
 	(* Check of Main class, else return *)
 	if not (List.mem "Main" user_classes) then begin
