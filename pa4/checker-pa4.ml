@@ -861,6 +861,9 @@ let main () = begin
 					| None -> ()
 				end;
 
+				(*Finally add attr_name to O -- add it to current scope *)
+				Hashtbl.add o attr_name (Class decl_type);	
+
 			| _ -> failwith "cannot happen: found method"
 
 
