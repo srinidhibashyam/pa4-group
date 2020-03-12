@@ -840,7 +840,8 @@ let main () = begin
 
 				(* Check for duplicate formals in the method. *)
 				let formal_names = ref [] in
-				List.iter( fun ((_, formal_name),_) ->
+				let new_o_env = Hashtbl.copy o_e in
+				List.iter( fun ((_, formal_name),(_, formal_type)) ->
 					if (List.mem formal_name !formal_names) then begin
 						printf "ERROR: %s: Type-Check: class %s has method %s with duplicate formal parameter named %s\n" 
 							method_line_number class_name method_name formal_name;
@@ -848,6 +849,8 @@ let main () = begin
 					end;
 					(* Collect all formal names *)
 					formal_names :=  formal_name :: !formal_names;
+					(* Add formal type to the local extended object enviroment *)
+					Hashtbl.add new_o_env formal_name (Class formal_type);
 				) formals ;
 
 				(* Check for method override errors in super classes *)
@@ -864,15 +867,14 @@ let main () = begin
 
 
 				(* Type check method expression *)
-				let init_type = exp_typecheck o_e m_e exp in
+
+				let init_type = exp_typecheck new_o_env m_e exp in
 	  			let (return_loc, return_type) = ret_type in
-	  			if is_subtype init_type (Class return_type) then
-	  				() (*we are happy*)
-	  			else begin
+	  			if not (is_subtype init_type (Class return_type)) then begin
 	  				printf "ERROR: %s: Type-Check: %s does not conform to %s in method %s\n" 
 	  					method_line_number (type_to_str init_type) return_type method_name;
-					exit 1
-	  			end;
+					exit 1;
+				end;
 
 			| _ -> failwith "cannot happen: found attribute"
 			
@@ -900,13 +902,12 @@ let main () = begin
 					| Some(init_exp) -> 
 						(* x: Int <- 5 + 3 *)
 			  			let init_type = exp_typecheck o_e m_e init_exp in
-			  			if is_subtype init_type (Class decl_type) then
-			  				() (*we are happy*)
-			  			else begin
+			  			if not (is_subtype init_type (Class decl_type)) then begin 
 			  				printf "ERROR: %s: Type-Check: initializer for %s was %s, did not match declared %s\n" 
 			  					attr_loc attr_name (type_to_str init_type) decl_type ;
 							exit 1
-			  			end;
+						end;
+
 					| None -> ()
 				end;
 
