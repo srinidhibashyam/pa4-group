@@ -861,6 +861,19 @@ let main () = begin
 						exit 1;
 					| _ -> failwith "cannot happen: Unknown Method Redefines Error";
 				) supclasses;
+
+
+				(* Type check method expression *)
+				let init_type = exp_typecheck o_e m_e exp in
+	  			let (return_loc, return_type) = ret_type in
+	  			if is_subtype init_type (Class return_type) then
+	  				() (*we are happy*)
+	  			else begin
+	  				printf "ERROR: %s: Type-Check: %s does not conform to %s in method %s\n" 
+	  					method_line_number (type_to_str init_type) return_type method_name;
+					exit 1
+	  			end;
+
 			| _ -> failwith "cannot happen: found attribute"
 			
 		) own_methods;
