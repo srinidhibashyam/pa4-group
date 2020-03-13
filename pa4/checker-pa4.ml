@@ -109,6 +109,7 @@ and expression_type =
     | StaticDispatch of expression * cool_type * identifier * expression list
     | Let of (binding list) * expression
     | Case of expression * (case_element list)
+    | Internal of string * string * string
 and binding =
         | BindingNoInit of identifier * cool_type
         | BindingInit of identifier * cool_type * expression
@@ -923,8 +924,6 @@ let main () = begin
 	(* DONE WITH ERROR CHECKING*)
 
 	(* Emit the CL-Type file *)
-
-	(* PA4-c we emit only class map - TODO ? *)
 	let class_map_file_name = (Filename.chop_extension input_file_name) ^ ".cl-type" in
 	let f_out = open_out class_map_file_name in
 
@@ -1028,6 +1027,8 @@ let main () = begin
                                 output_exp expr;
                                 fprintf f_out "%d\n" (List.length elelist);
                                 List.iter output_ele elelist
+                | Internal(typ, class_name, method_name)   ->
+                                fprintf f_out "0\n%s\ninternal\n%s.%s\n" typ class_name method_name;
         and     output_identifier (line_number, string_lexeme) =
                         fprintf f_out "%s\n%s\n" line_number string_lexeme
 
@@ -1141,10 +1142,6 @@ let main () = begin
         vertices := add_missing_edges !vertices;
         let sorted_classes = topo_sort !vertices in
 
-        (*List.iter (fun cls -> *)
-                (*printf "%s\n" cls*)
-        (*) sorted_classes ;*)
-
         let does_method_exist_in_list target_method_name feature_list =
                 let result = ref false in
                 List.iter (fun feature ->
@@ -1174,7 +1171,7 @@ let main () = begin
                 List.iter (fun class_name ->
                         let super_class_option = List.find_opt (fun ((_,cname),_,_)-> class_name = cname) super_class_list in
                         if not (Option.none = super_class_option) then begin
-                                let ((_, _),_,features) = Option.get super_class_option in
+                                let ((_, super_class_name),_,features) = Option.get super_class_option in
                                 (* add methods to hashtbl starting from the ultimate class that override method *)
                                 List.iter (fun current_method ->
                                         match current_method with
@@ -1182,7 +1179,20 @@ let main () = begin
                                         | Method ((_,method_name), formals, method_type, exp) -> begin
                                                 let cur = Hashtbl.find_opt methods_map method_name in
                                                 match cur with 
-                                                | None -> Hashtbl.replace methods_map method_name (formals, class_name, exp);
+                                                | None -> begin
+                                                        let exp_super = ref exp in 
+                                                        let _, method_type_val = method_type in
+                                                        if (List.mem super_class_name base_classes) then begin
+                                                                exp_super := 
+                                                                {
+                                                                        line_number = "0";
+                                                                        expression_type = Internal(method_type_val, super_class_name, method_name);
+                                                                        static_type = (Option.some (Class method_type_val)); 
+                                                                } ;
+                                                                ()
+                                                        end;
+                                                        Hashtbl.replace methods_map method_name (formals, class_name, !exp_super);
+                                                end
                                                 | _ -> () 
                                         end
                                 ) features ;
@@ -1208,7 +1218,8 @@ let main () = begin
                         fprintf f_out "%d\n" (List.length formals);
                         output_formal_name formals;
                         fprintf f_out "%s\n" owner_class;
-                        fprintf f_out "!TODO: expression\n";
+                        if not (exp.static_type = None) then output_exp exp
+                        else fprintf f_out "expression is None, %s\n" owner_class
                 ) sorted_methods
         in
 
