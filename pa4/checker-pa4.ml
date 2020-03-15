@@ -123,6 +123,7 @@ and case_element =
 exception MethodRedefineError of string;;
 exception AttributeRedefineError of string;;
 
+(* static expressions for built-in methods of Object, Int, String, IO classes *)
 let int_static_type = (Option.some (Class "Int"));;
 let self_type_static_type = (Option.some (Class "SELF_TYPE"));;
 let str_static_type = (Option.some (Class "String"));;
@@ -134,11 +135,11 @@ let in_int_exp_body = {line_number= "0"; expression_type=Internal(("0", "Int"), 
 let out_int_exp_body = {line_number= "0"; expression_type=Internal(("0", "SELF_TYPE"), "IO", "out_int") ; static_type=self_type_static_type;}
 let in_str_exp_body = {line_number= "0"; expression_type=Internal(("0", "String"), "IO", "in_string") ; static_type=str_static_type;}
 let out_str_exp_body = {line_number= "0"; expression_type=Internal(("0", "SELF_TYPE"), "IO", "out_string") ; static_type=self_type_static_type;}
-(* TODO:  length of self *)
 let str_length_exp_body = {line_number = "0"; expression_type=Internal(("0", "Int"), "String", "length"); static_type=int_static_type;}
 let str_concat_exp_body = {line_number = "0"; expression_type=Internal(("0", "String"), "String", "concat"); static_type=str_static_type;}
 let str_substr_exp_body = {line_number = "0"; expression_type=Internal(("0", "String"), "String", "substr"); static_type=str_static_type;}
 
+(* initialization of built-in methods *)
 let int_features = [];;
 let bool_features = [];;
 let io_features = [ 
@@ -164,9 +165,8 @@ let rec get_super_classes input_class_name ast_list visited = begin
 		let ((cloc,_),inherits,_) = List.find(fun ((_,cname),_,_)-> input_class_name = cname) ast_list in
 		match inherits with
 		| None -> 
-                        let obj_name = "Object" in
-                        let class_object = ((cloc, obj_name), None, obj_features) in
-                        [class_object]
+                let class_object = ((cloc, "Object"), None, obj_features) in
+                [class_object]
 		| Some(iloc, iname) -> 
 			try
 				(* Check for forbidden super classes *)
@@ -1217,7 +1217,6 @@ let main () = begin
         in
         let exclude_overriden_methods parents_methods_tbl features class_name =
                 let map = (Hashtbl.copy parents_methods_tbl) in
-                (*printf "size of the map: %d \n" (Hashtbl.length map);*)
                 List.iter (fun f ->
                         match f with
                         | Method ((_,method_name), formals, method_type, exp) -> begin
@@ -1247,15 +1246,13 @@ let main () = begin
                 ) formals                 
         in
 
-        let methods_map = ref (Hashtbl.create 255) in
         let ordered_method_names = ref [] in
         (* retreive the hashtable with method name as a key and tuple (formals, class_name, exp) as a value.
          * It is needed to conveniently print out implementation map. 
          * What it does? it itrates over class names (that are in topological order) and saves all
          * methods that it declares and override.*)
         let get_parents_methods_tbl class_names super_class_list =
-                (*let methods_map_ = !methods_map in*)
-                let methods_map_ = Hashtbl.create 255 in
+                let methods_map = Hashtbl.create 255 in
                 ordered_method_names := [];
                 List.iter (fun class_name ->
                         let super_class_option = List.find_opt (fun ((_,cname),_,_)-> class_name = cname) super_class_list in
@@ -1269,13 +1266,12 @@ let main () = begin
                                                 if not(List.mem method_name !ordered_method_names) then
                                                         ordered_method_names := !ordered_method_names @ [method_name];
                                                 let _, method_type_val = method_type in
-                                                Hashtbl.replace methods_map_ method_name (formals, class_name, exp);
+                                                Hashtbl.replace methods_map method_name (formals, class_name, exp);
                                         end
                                 ) features ;
                         end;
                 ) class_names ;
-                methods_map := methods_map_;
-                methods_map_
+                methods_map
         in
 
         (* get sorted list of names from a hastable *)
@@ -1307,7 +1303,6 @@ let main () = begin
         let output_own_methods current_class own_features parents_methods_tbl = 
                 List.iter (fun current_method ->
                         match current_method with
-                        | Attribute _ -> ()
                         | Method ((_,method_name), formals, method_type, exp) -> begin
                                 if not (Hashtbl.mem parents_methods_tbl method_name) then begin
                                         fprintf f_out "%s\n" method_name;
@@ -1318,6 +1313,7 @@ let main () = begin
                                         else fprintf f_out "expression is None\n"
                                 end
                          end
+                        | _ -> ()
                 ) own_features
         in
 
@@ -1326,7 +1322,6 @@ let main () = begin
 	List.iter (fun class_name ->
                 fprintf f_out "%s\n" class_name;
                 let super_class_list = get_super_classes class_name ast_with_base_classes [] in
-                printf "-------\nclass: %s, %d\n" class_name (List.length super_class_list);
                 let (_,inherits,features) = List.find (fun ((_,cname),_,_)-> class_name = cname) ast_with_base_classes in
                 let parents_methods_tbl = get_parents_methods_tbl (sorted_classes) super_class_list in
                 let parents_methods_tbl = exclude_overriden_methods parents_methods_tbl features class_name in
