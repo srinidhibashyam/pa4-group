@@ -3,7 +3,7 @@ export CFLAGS
 
 all: checker-pa4.exe
 
-checker-pa4.exe:
+checker-pa4.exe: clean
 	rm -f checker-pa4.mli checker-pa4.exe checker-pa4.cmi checker-pa4.cmx
 	ocamlopt -o checker-pa4 checker-pa4.ml
 
