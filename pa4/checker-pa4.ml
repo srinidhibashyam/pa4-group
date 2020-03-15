@@ -162,15 +162,8 @@ let rec get_super_classes input_class_name ast_list visited = begin
 		match inherits with
 		| None -> 
                         let obj_name = "Object" in
-                        let class_object = [] in
-                        (*return object *)
-                        if not (input_class_name = obj_name) then begin
-                                class_object = [((cloc, obj_name), None, obj_features)];
-                                ()
-                        end;
-                        class_object;
-                        (*let class_object = ((cloc, obj_name), None, obj_features) in*)
-                        (*[class_object]*)
+                        let class_object = ((cloc, obj_name), None, obj_features) in
+                        [class_object]
 		| Some(iloc, iname) -> 
 			try
 				(* Check for forbidden super classes *)
@@ -1262,6 +1255,7 @@ let main () = begin
 	List.iter (fun class_name ->
                 fprintf f_out "%s\n" class_name;
                 let super_class_list = get_super_classes class_name ast_with_base_classes [] in
+                printf "-------\nclass: %s, %d\n" class_name (List.length super_class_list);
                 let (_,inherits,features) = List.find (fun ((_,cname),_,_)-> class_name = cname) ast_with_base_classes in
                 let parents_methods_tbl = get_parents_methods_tbl (sorted_classes) super_class_list in
                 let parents_methods_tbl = exclude_overriden_methods parents_methods_tbl features class_name in
