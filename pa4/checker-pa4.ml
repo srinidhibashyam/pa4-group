@@ -30,21 +30,34 @@ let rec is_subtype t1 t2 =    (*checking if t1 is subtype of t2*)
 		with
 		| _ -> false (* x is undefined- Int, String, Bool*)
 		end
-	| _, _ -> (*TODO: check the class note like for SELF_TYPE*) false   
+	| SELF_TYPE(x), SELF_TYPE(y) -> 
+		if x = y then true
+		else false
+	| SELF_TYPE(c), Class(x) -> is_subtype (Class c) (Class x)
+	| Class(x), SELF_TYPE(c) -> false
+	| _, _ -> false
 
 exception LowerBoundFound of string;;
 
-let rec lowest_upper_bound t1 t2 =
-	if (is_subtype t1 t2) then t2 
-	else if (is_subtype t2 t1) then t1 
+let rec lowest_upper_bound type_1 type_2 =
+	let real_type_1 = match type_1 with 
+	| SELF_TYPE(c) -> Class c
+	| Class(c) -> type_1
+in
+	let real_type_2 = match type_2 with 
+	| SELF_TYPE(c) -> Class c 
+	| Class(c) -> type_2
+in 
+	if (is_subtype real_type_1 real_type_2) then real_type_2 
+	else if (is_subtype real_type_2 real_type_1) then real_type_1
 	else begin
 		try
-			let x = type_to_str t1 in
-			(* get parent maps of t1 and t2 *)
+			let x = type_to_str real_type_1 in
+			(* get parent maps of type_1 and type_2 *)
 			let t1_parents = Hashtbl.find parent_map x in
 			(* Iterate through t1_parents and find the lowest match in t2_parents*)
 			List.iter(fun cls ->
-				if (is_subtype t2 (Class cls)) then raise (LowerBoundFound cls) 
+				if (is_subtype real_type_2 (Class cls)) then raise (LowerBoundFound cls) 
 			) t1_parents;
 			(Class "Object"); (* should not reach this; but for completion, return object*)	
 
@@ -376,19 +389,25 @@ end;;
 * We implement type check procedure by reading in rules in the CRM
 *)
 	(* TODO: M C *)
-let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static_type = begin
+let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: expression) : static_type = begin
+	let self_type = SELF_TYPE (type_to_str c_e) in
 	let static_type = match exp.expression_type with
+	| New((id_location, id_name)) -> 
+		let result = match id_name with 
+			| "SELF_TYPE" -> SELF_TYPE(type_to_str c_e)
+			| _ -> Class id_name
+		in result
 	| Integer(i) -> Class("Int")
 	| String(s) -> Class("String")
 	| True | False -> Class("Bool")
 	| Plus(e1, e2) | Minus(e1, e2) | Times(e1, e2) | Divide(e1, e2) -> 
-		let t1 = exp_typecheck o_e m_e e1 in
+		let t1 = exp_typecheck o_e m_e c_e e1 in
 		if t1 <> (Class "Int") then begin
 			printf "ERROR: %s: Type-Check: arithmetic on Int %s instead of Ints\n" 
 				exp.line_number (type_to_str t1);
 			exit 1	
 		end;
-		let t2 = exp_typecheck o_e m_e e2 in
+		let t2 = exp_typecheck o_e m_e c_e e2 in
 		if t2 <> (Class "Int") then begin
 			printf "ERROR: %s: Type-Check: arithmetic on Int %s instead of Ints\n"
 				exp.line_number (type_to_str t2);
@@ -397,13 +416,13 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static
 		Class("Int")
 	| Equals(e1, e2) | LessThan(e1, e2)  | LessThanOrEq(e1, e2)-> 
 		let eq_class_list = [(Class "Int");(Class "String");(Class "Bool")] in
-		let t1 = exp_typecheck o_e m_e e1 in
+		let t1 = exp_typecheck o_e m_e c_e e1 in
 		if not (List.mem t1 eq_class_list) then begin
 			printf "ERROR: %s: Type-Check: comparison on %s not allowed\n" 
 				exp.line_number (type_to_str t1);
 			exit 1	
 		end;
-		let t2 = exp_typecheck o_e m_e e2 in
+		let t2 = exp_typecheck o_e m_e c_e e2 in
 		if t1 <> t2 then begin
 			printf "ERROR: %s: Type-Check: comparison between %s and %s\n" 
 				exp.line_number (type_to_str t1) (type_to_str t2);
@@ -411,7 +430,7 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static
 		end;
 		Class("Bool")
 	| Not(e1) -> 
-		let t1 = exp_typecheck o_e m_e e1 in
+		let t1 = exp_typecheck o_e m_e c_e e1 in
 		if t1 <> (Class "Bool") then begin
 			printf "ERROR: %s: Type-Check: not applied to type %s instead of Boolean \n" 
 				exp.line_number (type_to_str t1);
@@ -419,7 +438,7 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static
 		end;
 		Class("Bool")
 	| Negate(e1) -> 
-		let t1 = exp_typecheck o_e m_e e1 in
+		let t1 = exp_typecheck o_e m_e c_e e1 in
 		if t1 <> (Class "Int") then begin
 			printf "ERROR: %s: Type-Check: negate applied to type %s instead of Int \n" 
 				exp.line_number (type_to_str t1);
@@ -427,7 +446,7 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static
 		end;
 		Class("Int")
 	| IsVoid(e1) -> 
-		let t1 = exp_typecheck o_e m_e e1 in
+		let t1 = exp_typecheck o_e m_e c_e e1 in
 		Class("Bool")
 	| Identifier((vloc, vname)) -> 
 		if Hashtbl.mem o_e vname then
@@ -439,7 +458,7 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static
 	| Assign((id_location, id_name), exp) ->
 		if Hashtbl.mem o_e id_name then 
             let tid = Hashtbl.find o_e id_name in 
-            let te = exp_typecheck o_e m_e exp in 
+            let te = exp_typecheck o_e m_e c_e exp in 
             if is_subtype te tid then
                 te
             else begin
@@ -451,19 +470,19 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static
                 exit 1
         end
 	| If(predicate, then_exp, else_exp) ->
-    	let predicate_type = exp_typecheck o_e m_e predicate in
+    	let predicate_type = exp_typecheck o_e m_e c_e predicate in
     	if predicate_type <> (Class "Bool") then begin
     		printf "ERROR: %s: If statement's predicate expects type Bool, not type %s\n" exp.line_number (type_to_str predicate_type);
     		exit 1
     	end
     	else
-    		let then_exp_type = exp_typecheck o_e m_e then_exp in 
-    		let else_exp_type = exp_typecheck o_e m_e else_exp in
+    		let then_exp_type = exp_typecheck o_e m_e c_e then_exp in 
+    		let else_exp_type = exp_typecheck o_e m_e c_e else_exp in
     			lowest_upper_bound then_exp_type else_exp_type
     | Block(exps) ->
     	let list_type = ref (Class "Object") in 
     	let check_type = List.iter(fun e -> 
-        		list_type := exp_typecheck o_e m_e e
+        		list_type := exp_typecheck o_e m_e c_e e
     	) exps in 
     		!list_type
     | Let(bindings, exp) ->
@@ -473,7 +492,7 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static
 			| BindingNoInit((id_location, id_name), (type_location, init_type)) -> 
 				Hashtbl.add new_o id_name (Class init_type)
 			| BindingInit((id_location, id_name), (type_location, init_type), init_exp) ->
-				let init_exp_type = exp_typecheck o_e m_e init_exp in 
+				let init_exp_type = exp_typecheck o_e m_e c_e init_exp in 
 					if is_subtype init_exp_type (Class init_type) then 
 						Hashtbl.add new_o id_name (Class init_type)
 					else begin
@@ -482,22 +501,22 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static
 						exit 1
 					end
 		)bindings;
-		exp_typecheck new_o m_e exp
+		exp_typecheck new_o m_e c_e exp
 	| While(exp1, exp2) -> 
-		let t1 = exp_typecheck o_e m_e exp1 in
+		let t1 = exp_typecheck o_e m_e c_e exp1 in
 		if t1 <> Class("Bool") then begin
 			printf "ERROR: %s: While statement's predicate expects type Bool, not type %s\n" exp.line_number (type_to_str t1);
     		exit 1
 		end
 		else begin
-			exp_typecheck o_e m_e exp2;
+			exp_typecheck o_e m_e c_e exp2;
 			Class("Object")
 		end
 	| IsVoid(exp) ->
-		exp_typecheck o_e m_e exp;
+		exp_typecheck o_e m_e c_e exp;
 		Class("Bool")
 	| Not(exp) -> 
-		let t = exp_typecheck o_e m_e exp in 
+		let t = exp_typecheck o_e m_e c_e exp in 
 		if t <> Class("Bool") then begin 
 			printf "ERROR: %s: Not statement's expression expects type Bool, not type %s\n" exp.line_number (type_to_str t);
     		exit 1
@@ -505,8 +524,8 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static
     	else 
     		Class("Bool")
    	| Equals(exp1, exp2) -> 
-   		let t1 = exp_typecheck o_e m_e exp1 in 
-   		let t2 = exp_typecheck o_e m_e exp2 in
+   		let t1 = exp_typecheck o_e m_e c_e exp1 in 
+   		let t2 = exp_typecheck o_e m_e c_e exp2 in
    		if t1 <> t2 then begin
    			printf "ERROR: %s: Cannot compare 2 expressions of type %s and %s\n" exp.line_number (type_to_str t1) (type_to_str t2);
     		exit 1
@@ -517,6 +536,14 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static
    				printf "ERROR: %s: Cannot compare 2 expressions of type %s\n" exp.line_number (type_to_str t1);
     			exit 1
    			end
+   	| Negate(exp) -> 
+   		let t = exp_typecheck o_e m_e c_e exp in 
+   		if t = Class("Int") then 
+   			t
+   		else begin
+   			printf "ERROR: %s: Cannot negate expressions of type %s\n" exp.line_number (type_to_str t);
+    		exit 1
+   		end
 in
 	(* annotate AST with the new-found static type *)
 	exp.static_type <- Some(static_type); (* Node => havent done tc, Some => done with tc *)
@@ -902,7 +929,7 @@ let main () = begin
 
 				(* Type check method expression *)
 
-				let init_type = exp_typecheck new_o_env m_e exp in
+				let init_type = exp_typecheck new_o_env m_e (Class class_name) exp in
 	  			let (return_loc, return_type) = ret_type in
 	  			if not (is_subtype init_type (Class return_type)) then begin
 	  				printf "ERROR: %s: Type-Check: %s does not conform to %s in method %s\n" 
@@ -935,7 +962,7 @@ let main () = begin
 				begin match exp with
 					| Some(init_exp) -> 
 						(* x: Int <- 5 + 3 *)
-			  			let init_type = exp_typecheck o_e m_e init_exp in
+			  			let init_type = exp_typecheck o_e m_e (Class class_name) init_exp in
 			  			if not (is_subtype init_type (Class decl_type)) then begin 
 			  				printf "ERROR: %s: Type-Check: initializer for %s was %s, did not match declared %s\n" 
 			  					attr_loc attr_name (type_to_str init_type) decl_type ;
@@ -1177,7 +1204,7 @@ let main () = begin
 
         (*List.iter (fun cls -> *)
                 (*printf "%s\n" cls*)
-        (*) sorted_classes ;*)
+        (* sorted_classes ;*)
 
         let does_method_exist_in_list target_method_name feature_list =
                 let result = ref false in
@@ -1286,7 +1313,7 @@ let main () = begin
                                 (*let ((_, super_class_name),_,super_features) = (Option.get option_super_class) in*)
                                 (*output_parent_methods super_class_name super_features class_name features;*)
                         (*end*)
-                (*) sorted_classes ;*)
+                (* sorted_classes ;*)
                 (*fprintf f_out "%s\n" super_class_name;*)
                         
         ) all_classes ;
@@ -1311,6 +1338,6 @@ let main () = begin
                 end
         ) all_classes ;
 
-
+	
 end ;;
 main () ;;
