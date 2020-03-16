@@ -112,6 +112,7 @@ and expression_type =
     | StaticDispatch of expression * cool_type * identifier * expression list
     | Let of (binding list) * expression
     | Case of expression * (case_element list)
+    | Internal of cool_type * string * string
 and binding =
     | BindingNoInit of identifier * cool_type
     | BindingInit of identifier * cool_type * expression
@@ -122,29 +123,40 @@ and case_element =
 exception MethodRedefineError of string;;
 exception AttributeRedefineError of string;;
 
-let dummy_exp_body = {line_number= "0"; expression_type= String(""); static_type= None;}
-let int_exp_body = {line_number= "0"; expression_type= Integer("0"); static_type= None;}
-let string_exp_body = {line_number= "0"; expression_type= String(""); static_type= None;}
-(* TODO:  length of self *)
-let string_length_exp_body = {line_number = "0"; expression_type= Integer("99"); static_type= None;}
+(* static expressions for built-in methods of Object, Int, String, IO classes *)
+let int_static_type = (Option.some (Class "Int"));;
+let self_type_static_type = (Option.some (Class "SELF_TYPE"));;
+let str_static_type = (Option.some (Class "String"));;
+let obj_static_type = (Option.some (Class "Object"));;
+let obj_abort_exp_body = {line_number= "0"; expression_type=Internal(("0", "Object"), "Object", "abort") ; static_type=obj_static_type;}
+let obj_type_name_exp_body = {line_number= "0"; expression_type=Internal(("0", "String"), "Object", "type_name") ; static_type=str_static_type;}
+let obj_copy_exp_body = {line_number= "0"; expression_type=Internal(("0", "SELF_TYPE"), "Object", "copy") ; static_type=self_type_static_type;}
+let in_int_exp_body = {line_number= "0"; expression_type=Internal(("0", "Int"), "IO", "in_int") ; static_type=int_static_type ;}
+let out_int_exp_body = {line_number= "0"; expression_type=Internal(("0", "SELF_TYPE"), "IO", "out_int") ; static_type=self_type_static_type;}
+let in_str_exp_body = {line_number= "0"; expression_type=Internal(("0", "String"), "IO", "in_string") ; static_type=str_static_type;}
+let out_str_exp_body = {line_number= "0"; expression_type=Internal(("0", "SELF_TYPE"), "IO", "out_string") ; static_type=self_type_static_type;}
+let str_length_exp_body = {line_number = "0"; expression_type=Internal(("0", "Int"), "String", "length"); static_type=int_static_type;}
+let str_concat_exp_body = {line_number = "0"; expression_type=Internal(("0", "String"), "String", "concat"); static_type=str_static_type;}
+let str_substr_exp_body = {line_number = "0"; expression_type=Internal(("0", "String"), "String", "substr"); static_type=str_static_type;}
 
+(* initialization of built-in methods *)
 let int_features = [];;
 let bool_features = [];;
 let io_features = [ 
-				Method(("0","out_string"), [(("0","x"),("0","String"))], ("0","SELF_TYPE"), dummy_exp_body);
-				Method(("0","out_int"), [(("0","x"),("0","Int"))], ("0","SELF_TYPE"), dummy_exp_body);
-				Method(("0","in_string"), [], ("0","String"), dummy_exp_body);
-				Method(("0","in_int"), [], ("0","Int"), dummy_exp_body);
+				Method(("0","in_int"), [], ("0","Int"), in_int_exp_body);
+				Method(("0","in_string"), [], ("0","String"), in_str_exp_body);
+				Method(("0","out_int"), [(("0","x"),("0","Int"))], ("0","SELF_TYPE"), out_int_exp_body);
+				Method(("0","out_string"), [(("0","x"),("0","String"))], ("0","SELF_TYPE"), out_str_exp_body);
 				];;
 let obj_features = [ 
-				Method(("0","abort"), [], ("0","Object"), dummy_exp_body);
-				Method(("0","type_name"), [], ("0","String"), dummy_exp_body);
-				Method(("0","copy"), [], ("0","SELF_TYPE"), dummy_exp_body);
+				Method(("0","abort"), [], ("0","Object"), obj_abort_exp_body);
+				Method(("0","copy"), [], ("0","SELF_TYPE"), obj_copy_exp_body);
+				Method(("0","type_name"), [], ("0","String"), obj_type_name_exp_body);
 				];;	
 let string_features = [ 
-				Method(("0","length"), [], ("0","Int"), string_length_exp_body);
-				Method(("0","concat"), [(("0","x"),("0","String"))], ("0","String"), dummy_exp_body);
-				Method(("0","substr"), [(("0","i"),("0","Int"));(("0","l"),("0","Int"))], ("0","String"), dummy_exp_body);
+				Method(("0","concat"), [(("0","s"),("0","String"))], ("0","String"), str_concat_exp_body);
+				Method(("0","length"), [], ("0","Int"), str_length_exp_body);
+				Method(("0","substr"), [(("0","i"),("0","Int"));(("0","l"),("0","Int"))], ("0","String"), str_substr_exp_body);
 				];;	
 
 (* Lists all parent classes of a given class in given ast list (including IO and Object) *)
@@ -153,9 +165,8 @@ let rec get_super_classes input_class_name ast_list visited = begin
 		let ((cloc,_),inherits,_) = List.find(fun ((_,cname),_,_)-> input_class_name = cname) ast_list in
 		match inherits with
 		| None -> 
-			(*return object*) 
-			let class_object = ((cloc, "Object"), None, obj_features) in
-			[class_object];
+                let class_object = ((cloc, "Object"), None, obj_features) in
+                [class_object]
 		| Some(iloc, iname) -> 
 			try
 				(* Check for forbidden super classes *)
@@ -1044,8 +1055,6 @@ let main () = begin
 	(* DONE WITH ERROR CHECKING*)
 
 	(* Emit the CL-Type file *)
-
-	(* PA4-c we emit only class map - TODO ? *)
 	let class_map_file_name = (Filename.chop_extension input_file_name) ^ ".cl-type" in
 	let f_out = open_out class_map_file_name in
 
@@ -1149,6 +1158,9 @@ let main () = begin
                                 output_exp expr;
                                 fprintf f_out "%d\n" (List.length elelist);
                                 List.iter output_ele elelist
+                | Internal(typ, class_name, method_name)   ->
+                                (*output_type typ;*)
+                                fprintf f_out "internal\n%s.%s\n" class_name method_name;
         and     output_identifier (line_number, string_lexeme) =
                         fprintf f_out "%s\n%s\n" line_number string_lexeme
 
@@ -1242,12 +1254,28 @@ let main () = begin
 
         let ast_with_base_classes = get_ast_with_base_classes ast base_classes in
 
-        let get_number_of_methods lst = 
+        let get_number_of_methods parents_methods_tbl features = 
                 let num = ref 0 in
-                List.iter (fun ((_,_),_,features) ->
-                        num := (List.length features) + !num
-                ) lst ;
-                !num 
+                List.iter (fun f ->
+                        match f with
+                        | Method((_,method_name),_,_,_) -> begin
+                                if not(Hashtbl.mem parents_methods_tbl method_name) then
+                                        num := !num + 1
+                        end
+                ) features ;
+                (Hashtbl.length parents_methods_tbl) + !num
+        in
+        let exclude_overriden_methods parents_methods_tbl features class_name =
+                let map = (Hashtbl.copy parents_methods_tbl) in
+                List.iter (fun f ->
+                        match f with
+                        | Method ((_,method_name), formals, method_type, exp) -> begin
+                                if (Hashtbl.mem map method_name) then begin 
+                                        Hashtbl.replace map method_name (formals, class_name, exp)
+                                end
+                        end
+                ) features ;
+                map
         in
 
         List.iter (fun ((cls_loc, cls_name), inherits, features) ->
@@ -1262,121 +1290,97 @@ let main () = begin
         vertices := add_missing_edges !vertices;
         let sorted_classes = topo_sort !vertices in
 
-        (*List.iter (fun cls -> *)
-                (*printf "%s\n" cls*)
-        (*) sorted_classes ;*)
-
-        let does_method_exist_in_list target_method_name feature_list =
-                let result = ref false in
-                List.iter (fun feature ->
-                        match feature with
-                        | Attribute _ -> ()
-                        | Method ((_,method_name), _, _, _) -> begin
-                                if method_name = target_method_name then
-                                        result := true;
-                                        ()
-                        end
-                ) feature_list ;
-                !result
-        in
-
         let output_formal_name formals =
                 List.iter( fun ((_, formal_name),_) ->
                         fprintf f_out "%s\n" formal_name
                 ) formals                 
         in
 
+        let ordered_method_names = ref [] in
         (* retreive the hashtable with method name as a key and tuple (formals, class_name, exp) as a value.
          * It is needed to conveniently print out implementation map. 
          * What it does? it itrates over class names (that are in topological order) and saves all
          * methods that it declares and override.*)
         let get_parents_methods_tbl class_names super_class_list =
-            let methods_map = Hashtbl.create 255 in
-            List.iter (fun class_name ->
-                    let super_class_option = List.find_opt (fun ((_,cname),_,_)-> class_name = cname) super_class_list in
-                    if not (Option.none = super_class_option) then begin
-                            let ((_, _),_,features) = Option.get super_class_option in
-                            (* add methods to hashtbl starting from the ultimate class that override method *)
-                            List.iter (fun current_method ->
-                                    match current_method with
-                                    | Attribute _ -> ()
-                                    | Method ((_,method_name), formals, method_type, exp) -> begin
-                                            let cur = Hashtbl.find_opt methods_map method_name in
-                                            match cur with 
-                                            | None -> Hashtbl.replace methods_map method_name (formals, class_name, exp);
-                                            | _ -> () 
-                                    end
-                            ) features ;
-                    end;
-            ) class_names ;
-            methods_map
+                let methods_map = Hashtbl.create 255 in
+                ordered_method_names := [];
+                List.iter (fun class_name ->
+                        let super_class_option = List.find_opt (fun ((_,cname),_,_)-> class_name = cname) super_class_list in
+                        if not (Option.none = super_class_option) then begin
+                                let ((_, super_class_name),_,features) = Option.get super_class_option in
+                                (* add methods to hashtbl starting from the ultimate class that override method *)
+                                List.iter (fun current_method ->
+                                        match current_method with
+                                        | Attribute _ -> ()
+                                        | Method ((_,method_name), formals, method_type, exp) -> begin
+                                                if not(List.mem method_name !ordered_method_names) then
+                                                        ordered_method_names := !ordered_method_names @ [method_name];
+                                                let _, method_type_val = method_type in
+                                                Hashtbl.replace methods_map method_name (formals, class_name, exp);
+                                        end
+                                ) features ;
+                        end;
+                ) class_names ;
+                methods_map
         in
 
         (* get sorted list of names from a hastable *)
-        let get_method_names_from_tbl tbl =
-            let parents_method_list = ref (Hashtbl.fold (fun method_name value acc -> 
-                                    method_name :: acc 
-            ) tbl []) in
-            List.sort compare !parents_method_list
+        let get_ordered_method_names_parent_classes tbl =
+                let parents_method_list = ref (Hashtbl.fold (fun method_name value acc -> 
+                                        method_name :: acc 
+                ) tbl []) in
+                (*List.sort compare !parents_method_list*)
+                !parents_method_list
         in
 
         (* Output each method in turn (in order of appearance, with inherited or overridden methods from a superclass coming first; internal methods are defined to appear in ascending alphabetical order) *)
         let output_parent_methods parents_methods_tbl  =
-            let sorted_methods = get_method_names_from_tbl parents_methods_tbl in
-            List.iter (fun method_name ->
-                    let formals, owner_class, exp = (Hashtbl.find parents_methods_tbl method_name) in
-                    fprintf f_out "%s\n" method_name;
-                    fprintf f_out "%d\n" (List.length formals);
-                    output_formal_name formals;
-                    fprintf f_out "%s\n" owner_class;
-                    fprintf f_out "!TODO: expression\n";
-            ) sorted_methods
+                List.iter (fun method_name ->
+                        let method_info_option = (Hashtbl.find_opt parents_methods_tbl method_name) in
+                        if not (Option.none = method_info_option) then begin
+                                let formals, owner_class, exp = Option.get method_info_option in
+                                fprintf f_out "%s\n" method_name;
+                                fprintf f_out "%d\n" (List.length formals);
+                                output_formal_name formals;
+                                fprintf f_out "%s\n" owner_class;
+                                if not (exp.static_type = None) then output_exp exp
+                                else fprintf f_out "expression is None, %s\n" owner_class
+                        end     
+                ) !ordered_method_names
         in
 
         (* print out methods of the current class in the order they appear in source filess *)
-        let output_own_methods current_class own_features parents_method_list = 
-            List.iter (fun current_method ->
-                    match current_method with
-                    | Attribute _ -> ()
-                    | Method ((_,method_name), formals, method_type, exp) -> begin
-                            fprintf f_out "%s\n" method_name;
-                            fprintf f_out "%d\n" (List.length formals);
-                            output_formal_name formals;
-                            if not (List.mem method_name parents_method_list) then begin
-                                    fprintf f_out "%s\n" current_class;
-                                    if not (exp.static_type = None) then output_exp exp
-                                    else fprintf f_out "expression is None\n"
-                            end;
-                    end
-            ) own_features
+        let output_own_methods current_class own_features parents_methods_tbl = 
+                List.iter (fun current_method ->
+                        match current_method with
+                        | Method ((_,method_name), formals, method_type, exp) -> begin
+                                if not (Hashtbl.mem parents_methods_tbl method_name) then begin
+                                        fprintf f_out "%s\n" method_name;
+                                        fprintf f_out "%d\n" (List.length formals);
+                                        output_formal_name formals;
+                                        fprintf f_out "%s\n" current_class;
+                                        if not (exp.static_type = None) then output_exp exp
+                                        else fprintf f_out "expression is None\n"
+                                end
+                         end
+                        | _ -> ()
+                ) own_features
         in
 
 	fprintf f_out "implementation_map\n%d\n" (List.length all_classes);
 	(* Iterate over all classes *)
 	List.iter (fun class_name ->
-        (* output the class name *)
-        fprintf f_out "%s\n" class_name;
-        let super_class_list = get_super_classes class_name ast_with_base_classes [] in
-        
-        let (_,inherits,features) = List.find (fun ((_,cname),_,_)-> class_name = cname) ast_with_base_classes in
-        fprintf f_out "%d\n" ((get_number_of_methods super_class_list) + (List.length features));
-        (* output the number of methods *)
-        let map = get_parents_methods_tbl (List.rev sorted_classes) super_class_list in
-        (*fprintf f_out "size: %d " (Hashtbl.length map);*)
-        let parents_methods_tbl = map in
-        output_parent_methods parents_methods_tbl;
-        let sorted_method_list = get_method_names_from_tbl parents_methods_tbl in
-        output_own_methods class_name features sorted_method_list;
-        (*List.iter (fun target_class ->*)
-                (*let option_super_class = List.find_opt (fun ((_,cname),_,_)-> target_class = cname) super_class_list in*)
-                (*if not (option_super_class = Option.none) then begin*)
-                        (*let ((_, super_class_name),_,super_features) = (Option.get option_super_class) in*)
-                        (*output_parent_methods super_class_name super_features class_name features;*)
-                (*end*)
-        (*) sorted_classes ;*)
-        (*fprintf f_out "%s\n" super_class_name;*)
-                
-    ) all_classes ;
+                fprintf f_out "%s\n" class_name;
+                let super_class_list = get_super_classes class_name ast_with_base_classes [] in
+                let (_,inherits,features) = List.find (fun ((_,cname),_,_)-> class_name = cname) ast_with_base_classes in
+                let parents_methods_tbl = get_parents_methods_tbl (sorted_classes) super_class_list in
+                let parents_methods_tbl = exclude_overriden_methods parents_methods_tbl features class_name in
+                fprintf f_out "%d\n" (get_number_of_methods parents_methods_tbl features);
+                output_parent_methods parents_methods_tbl;
+                let sorted_method_list = get_ordered_method_names_parent_classes parents_methods_tbl in
+                output_own_methods class_name features parents_methods_tbl;
+                        
+        ) all_classes ;
 
 	fprintf f_out "parent_map\n%d\n" (List.length all_classes - 1);
 	(* Iterate over all classes *)
