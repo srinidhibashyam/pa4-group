@@ -1,4 +1,4 @@
-// This tests what happens if the wrong number of parameters are provided when performing a dynamic dispatch
+(* This tests what happens if the wrong number of parameters are provided when performing a dynamic dispatch *)
 Class Main {
 	main(): Object {
 		let exists: String <- "test" in
