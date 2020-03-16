@@ -250,6 +250,12 @@ let get_own_attributes input_class = begin
 			match feature with
 				| Attribute ((attribute_loc, attribute_name), _, _) -> 
 					(* Check for duplicate method in the same class. *)
+				if attribute_name = "self" then begin
+					printf "ERROR: %s: Type-Check: class %s has an attribute named %s\n" 
+						attribute_loc class_name attribute_name ;
+					exit 1	
+				end
+			else
 				if (List.mem attribute_name !attribute_names) then begin
 					printf "ERROR: %s: Type-Check: class %s redefines attribute %s\n" 
 						attribute_loc class_name attribute_name ;
@@ -471,6 +477,11 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: e
 			exit 1
 	 	end
 	| Assign((id_location, id_name), exp) ->
+		if id_name = "self" then begin
+			printf "ERROR: %s: Cannot assign to self variable\n"  id_location;
+            exit 1
+		end
+	else
 		if Hashtbl.mem o_e id_name then 
             let tid = Hashtbl.find o_e id_name in 
             let te = exp_typecheck o_e m_e c_e exp in 
@@ -979,7 +990,11 @@ let main () = begin
 					| Some(init_exp) -> 
 						(* x: Int <- 5 + 3 *)
 			  			let init_type = exp_typecheck o_e m_e (Class class_name) init_exp in
-			  			if not (is_subtype init_type (Class decl_type)) then begin 
+			  			let declared_type = match decl_type with
+			  			| "SELF_TYPE" -> SELF_TYPE class_name
+			  			| _ -> Class decl_type
+			  		in 
+			  			if not (is_subtype init_type declared_type) then begin 
 			  				printf "ERROR: %s: Type-Check: initializer for %s was %s, did not match declared %s\n" 
 			  					attr_loc attr_name (type_to_str init_type) decl_type ;
 							exit 1
