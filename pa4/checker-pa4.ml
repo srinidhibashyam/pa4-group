@@ -265,13 +265,17 @@ let get_own_attributes input_class = begin
 end ;;
 
 let add_attribute_types o input_class = begin
-	(* Add current class attributes to object environment*)	
+	(* Add current class attributes to object environment*)
+	let ((_, class_name), _, _) = input_class in
 	let own_attributes =  get_own_attributes input_class in
 	List.iter(fun own_attr -> 
 		match own_attr with
 		| Attribute ((attr_loc, attr_name), (decl_loc, decl_type), exp) ->
 			(*add attr_name to O -- add it to current scope *)
-			Hashtbl.add o attr_name (Class decl_type);		
+			if decl_type = class_name then 
+				Hashtbl.add o attr_name (SELF_TYPE decl_type)
+			else 
+				Hashtbl.add o attr_name (Class decl_type)
 		| Method _ -> ();
 	) own_attributes;
 end;;
@@ -285,9 +289,20 @@ let add_method_types meth_env input_class = begin
 	List.iter(fun own_feat -> 
 		match own_feat with
 		|  Method ((_, m_name), formals, (_, return_type),_) -> 
-			let formal_types = List.map (fun (_,(_,fname)) -> Class fname) formals in
+			let formal_types = List.map (fun (_,(_,fname)) -> 
+					if fname = class_name then 
+						SELF_TYPE fname
+					else 
+						Class fname
+				) formals in
 			let key = (class_name,m_name) in
-			let value = formal_types  @  [Class return_type] in
+			let return_class = begin
+				if return_type = class_name then 
+					SELF_TYPE return_type
+				else 
+					Class return_type 
+			end in
+			let value = formal_types  @  [return_class] in
 			Hashtbl.add meth_env key value;
 		| Attribute _ -> ();
 	) own_methods;
@@ -390,13 +405,13 @@ end;;
 *)
 	(* TODO: M C *)
 let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: expression) : static_type = begin
-	let self_type = SELF_TYPE (type_to_str c_e) in
 	let static_type = match exp.expression_type with
-	| New((id_location, id_name)) -> 
+	| New(e1) -> 
+		let (id_location, id_name) = e1 in
 		let result = match id_name with 
 			| "SELF_TYPE" -> SELF_TYPE(type_to_str c_e)
 			| _ -> Class id_name
-		in result
+		in result;
 	| Integer(i) -> Class("Int")
 	| String(s) -> Class("String")
 	| True | False -> Class("Bool")
@@ -544,6 +559,7 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: e
    			printf "ERROR: %s: Cannot negate expressions of type %s\n" exp.line_number (type_to_str t);
     		exit 1
    		end
+   	| x -> failwith "unexpected expression"
 in
 	(* annotate AST with the new-found static type *)
 	exp.static_type <- Some(static_type); (* Node => havent done tc, Some => done with tc *)
@@ -890,8 +906,7 @@ let main () = begin
 		) supclasses;
 		(* Add current class attributes to object environment*)
 		add_attribute_types o_e current_class;
-		
-	
+
 		(* Type check own methods *)
 		let own_methods = get_own_methods current_class in
 		List.iter(fun own_method -> 
