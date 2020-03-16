@@ -906,6 +906,7 @@ let main () = begin
 		) supclasses;
 		(* Add current class attributes to object environment*)
 		add_attribute_types o_e current_class;
+		Hashtbl.add o_e "self" (SELF_TYPE class_name);
 
 		(* Type check own methods *)
 		let own_methods = get_own_methods current_class in
