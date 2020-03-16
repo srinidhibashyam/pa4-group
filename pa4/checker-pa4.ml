@@ -431,7 +431,7 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static
 		let (_, required_caller_type_name) = required_caller_type in
 		let required_caller_class_type = Class(required_caller_type_name) in
 		(* We need to make sure that the caller type is the same as the required type, based upon the static dispatch, then we use it *)
-		if not (caller_type = required_caller_class_type) then begin
+		if not (is_subtype caller_type required_caller_class_type) then begin
 			printf "ERROR: %s: Type-Check: %s does not conform to %s in static dispatch\n" caller_expression.line_number (type_to_str caller_type) required_caller_type_name ;
 			exit 1
 		end ;
