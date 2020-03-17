@@ -505,10 +505,13 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 	 
 		(* This translates our cool_type to a class_type *)
 		let (required_caller_line_number, required_caller_type_name) = required_caller_type in
-	    let required_caller_class_type = Class(required_caller_type_name) in
+	    let required_caller_class_type = match required_caller_type_name with
+	    | "SELF_TYPE" -> SELF_TYPE(type_to_str c_e)
+	    | _           -> Class(required_caller_type_name)
+	    in
 		(* We need to make sure that the caller type is the same as the required type, based upon the static dispatch, then we use it *)
 		(* This should also catch the illegal self type case as well. *)
-		if not (is_subtype caller_type required_caller_class_type) then begin
+		if required_caller_type_name = "SELF_TYPE" or not (is_subtype caller_type required_caller_class_type) then begin
 			printf "ERROR: %s: Type-Check: %s does not conform to %s in static dispatch\n" caller_expression.line_number (type_to_str caller_type) required_caller_type_name ;
 			exit 1
 		end ;
