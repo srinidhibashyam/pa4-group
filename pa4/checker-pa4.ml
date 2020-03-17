@@ -282,6 +282,19 @@ let get_own_attributes input_class = begin
 	own_attributes;
 end ;;
 
+let get_all_attributes input_class ast= begin
+
+	let attributes = ref [] in
+	let ((_, class_name), _, _) = input_class in
+	let supclasses = get_super_classes class_name ast [] in
+	List.iter ( fun parent_class ->
+		let parent_attrs = get_own_attributes parent_class in
+		attributes := !attributes @ parent_attrs
+	) supclasses;
+	let own_attrs = get_own_attributes input_class in
+	attributes := !attributes @ own_attrs;
+	!attributes;
+end;;
 let add_attribute_types o input_class = begin
 	(* Add current class attributes to object environment*)	
 	let ((_, class_name), _, _) = input_class in
@@ -1256,7 +1269,7 @@ let main () = begin
 
 		(* Get list of attributes in this class with name class_name using find fn.*)
 		let attributes = 
-			(* TODO: consider INHERITED attributes:
+			(* consider INHERITED attributes:
 				1: construct a mapping from child to parent
 					a: use Toposort here to find the right order of traversal
 						or to detect inheritance cycles
@@ -1264,22 +1277,16 @@ let main () = begin
 				3: add in all of the attributes we find
 					4: while in 3, look for attribute override problems
 			 *)
-
 			try
-				let  (_, inherits, features) = List.find(
-					fun ((_,class_name_candidate),_,_)-> class_name_candidate = class_name
-				) ast in
-				(*Filter only Attribute features *)
-				List.filter (
-					fun feature -> match feature with
-					| Attribute _ -> true
-					| Method _ -> false
-				) features;
+				let curr_class = List.find(fun ((_,class_name_candidate),_,_)
+						 -> class_name_candidate = class_name) ast in
+				let  (_, inherits, features) = curr_class in
+				get_all_attributes curr_class ast
 
 			with
 			| _ -> (*bool/int/object*) []
 		in
-		fprintf f_out "!!%d\n" (List.length attributes);
+		fprintf f_out "%d\n" (List.length attributes);
 		List.iter ( fun attribute -> match attribute with
 		| Attribute ((_,attribute_name), (_, attribute_type), None) -> 
 			fprintf f_out "no_initializer\n%s\n%s\n" attribute_name attribute_type;
