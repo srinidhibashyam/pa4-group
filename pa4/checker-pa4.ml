@@ -282,6 +282,19 @@ let get_own_attributes input_class = begin
 	own_attributes;
 end ;;
 
+let get_all_attributes input_class ast= begin
+
+	let attributes = ref [] in
+	let ((_, class_name), _, _) = input_class in
+	let supclasses = get_super_classes class_name ast [] in
+	List.iter ( fun parent_class ->
+		let parent_attrs = get_own_attributes parent_class in
+		attributes := !attributes @ parent_attrs
+	) supclasses;
+	let own_attrs = get_own_attributes input_class in
+	attributes := !attributes @ own_attrs;
+	!attributes;
+end;;
 let add_attribute_types o input_class = begin
 	(* Add current class attributes to object environment*)	
 	let ((_, class_name), _, _) = input_class in
@@ -1267,7 +1280,7 @@ let main () = begin
 
 		(* Get list of attributes in this class with name class_name using find fn.*)
 		let attributes = 
-			(* TODO: consider INHERITED attributes:
+			(* consider INHERITED attributes:
 				1: construct a mapping from child to parent
 					a: use Toposort here to find the right order of traversal
 						or to detect inheritance cycles
@@ -1275,18 +1288,11 @@ let main () = begin
 				3: add in all of the attributes we find
 					4: while in 3, look for attribute override problems
 			 *)
-
 			try
-				let  (_, inherits, features) = List.find(
-					fun ((_ , class_name_candidate), _, _)-> class_name_candidate = class_name
-				) ast in
-				(*Filter only Attribute features *)
-				List.filter (
-					fun feature -> match feature with
-					| Attribute _ -> true
-					| Method _ -> false
-				) features;
-
+				let curr_class = List.find(fun ((_,class_name_candidate),_,_)
+						 -> class_name_candidate = class_name) ast in
+				let  (_, inherits, features) = curr_class in
+				get_all_attributes curr_class ast
 			with
 			| _ -> (*bool/int/object*) []
 		in
@@ -1334,21 +1340,22 @@ let main () = begin
                                 if not(Hashtbl.mem parents_methods_tbl method_name) then
                                         num := !num + 1
                         end
+                        | _ -> ()
                 ) features ;
                 (Hashtbl.length parents_methods_tbl) + !num
         in
         let exclude_overriden_methods parents_methods_tbl features class_name =
             let map = (Hashtbl.copy parents_methods_tbl) in
-            List.iter (fun feature ->
+            (List.iter (fun feature ->
                 match feature with
-                | Method ((_,method_name), formals, method_type, exp) -> begin
-                        if (Hashtbl.mem map method_name) then begin 
-                                Hashtbl.replace map method_name (formals, class_name, exp)
-                        end
-                end
-            ) features ;
-                map
-        in
+                | Method ((_,method_name), formals, method_type, exp) ->
+                    if (Hashtbl.mem map method_name) then begin 
+                            Hashtbl.replace map method_name (formals, class_name, exp)
+                    end
+                | _ -> ()
+                ) features ;
+            map)
+        in	
 
         List.iter (fun ((cls_loc, cls_name), inherits, features) ->
             match inherits with
@@ -1472,7 +1479,54 @@ let main () = begin
                 | Some(_, iname) ->
                         fprintf f_out "%s\n" iname
         end
-    ) all_classes ;
+        ) all_classes ;
+
+        let output_arg arg =
+                let arg_name, arg_type = arg in
+                output_identifier arg_name;
+                output_identifier arg_type;
+        in
+
+        let output_feature feature = 
+                match feature with 
+		| Attribute ((attr_loc, attr_name), (decl_loc, decl_type), exp) ->
+                                if (exp =  Option.none)then begin 
+                                        fprintf f_out "attribute_no_init\n" ;
+                                        output_identifier (attr_loc, attr_name);
+                                        output_identifier (decl_loc, decl_type)
+                                end else begin
+                                        fprintf f_out "attribute_init\n" ;
+                                        output_identifier (attr_loc, attr_name);
+                                        output_identifier (decl_loc, decl_type);
+                                        output_exp (Option.get exp)
+                                end
+                | Method(method_name, args, type_name, exp) ->
+                                fprintf f_out "method\n" ;
+                                output_identifier method_name;
+                                fprintf f_out "%d\n" (List.length args);
+                                List.iter output_arg args;
+                                output_identifier type_name;
+                                output_exp exp
+        in
+
+        (* Output ast *)
+        fprintf f_out "%d\n" (List.length ast);
+        List.iter (fun ((cls_line, cls_name), inherits, features) -> 
+                fprintf f_out "%s\n" cls_line;
+                fprintf f_out "%s\n" cls_name;
+                begin match inherits with
+                | None -> 
+                        fprintf f_out "no_inherits\n" 
+                | Some(parent_cls_line, parent_cls_name) ->
+                        fprintf f_out "inherits\n";
+                        fprintf f_out "%s\n" parent_cls_line;
+                        fprintf f_out "%s\n" parent_cls_name;
+                end;
+                fprintf f_out "%d\n" (List.length features);
+                List.iter output_feature features
+
+        ) ast;
+
 
 
 end ;;
