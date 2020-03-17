@@ -1083,6 +1083,10 @@ let main () = begin
 	let declared_classes = ref [] in
 	List.iter(fun current_class ->
 		let ((class_line_number, class_name), inherits, features) = current_class in
+		if class_name = "SELF_TYPE" then begin
+			printf "ERROR: %s: Type-Check: class named SELF_TYPE\n" class_line_number;
+			exit 1
+		end;
 		(* Look for redefined Basic Classes or already existing class*)
 		if ((List.mem class_name base_classes) ||
 				(List.mem class_name !declared_classes)) then begin
