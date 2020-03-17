@@ -308,15 +308,15 @@ let add_method_types meth_env input_class = begin
 		match own_feat with
 		|  Method ((_, m_name), formals, (_, return_type),_) -> 
 			let formal_types = List.map (fun (_,(_,fname)) -> 
-					if fname = class_name then 
-						SELF_TYPE fname
+					if fname = "SELF_TYPE" then 
+						SELF_TYPE class_name
 					else 
 						Class fname
 				) formals in
 			let key = (class_name,m_name) in
 			let return_class = begin
-				if return_type = class_name then 
-					SELF_TYPE return_type
+				if return_type = "SELF_TYPE" then 
+					SELF_TYPE class_name
 				else 
 					Class return_type 
 			end in
@@ -413,7 +413,50 @@ let check_attribute_redefines in_attribute in_class = begin
 	all_good	
 end;;
 
+(* This is a generic function that handles the core type checking that is shared between
+static, dynamic, and self dispatch *)
+let rec dispatch_type_check o_e m_e c_e caller_type_name caller_line_number method_identifier argument_expressions = begin
+	let (method_identifier_line_number, method_name): (string * string) = method_identifier in
+	try
+		(* This will return a list of ClassTypes, with the tail being the return type of the method
+		and the rest being parameter types *)
+		let method_information: static_type list = Hashtbl.find m_e (caller_type_name, method_name) in
+		(* We will return this later as the type for this DynamicDispatch, if we're successful *)
+		let return_type = List.nth method_information ((List.length method_information) - 1) in
+		(* The last item of the method information is the require type, so we have to get rid
+		of it. We do so by reversing the list, then removing the first entry, which was the 
+		end of the other list, and then we reverse it again to put it back in the old order.*)
+		let formal_types = List.rev (List.tl (List.rev method_information)) in
+		
+		(* First we check if the correct number of arguments were provided. *)
+		let actual_argument_count = (List.length formal_types) in
+		(* Parameter refers to the contract of the method while arguments 
+		refer to the values passed to the dispatch. *)
+		let expected_parameter_count = List.length argument_expressions in
+		if actual_argument_count <> expected_parameter_count then begin
+			printf "ERROR: %s: Type-Check: wrong number of actual arguments (%d vs. %d)\n"
+					caller_line_number actual_argument_count expected_parameter_count ;
+			exit 1
+		end ;
 
+		(* Next we check if the provided arguments are all subtypes of the expected
+		arguments. *)
+		List.iteri (fun i (argument_expression, formal_type: expression * static_type) ->
+			let argument_expression_type: static_type = exp_typecheck o_e m_e c_e argument_expression in
+			if not (is_subtype argument_expression_type formal_type) then begin
+				printf "ERROR: %s: Type-Check: argument #%d type %s does not conform to formal type %s\n" 
+					caller_line_number (i+1) (type_to_str argument_expression_type) (type_to_str formal_type) ;
+				exit 1
+			end
+		) (List.combine argument_expressions formal_types) ;
+					
+		return_type
+	with Not_found -> begin
+		printf "ERROR: %s: Type-Check: unknown method %s in dispatch on %s\n" 
+				method_identifier_line_number method_name caller_type_name ;
+		exit 1
+	end
+end
 
 (* Expression Type Checking 
 * Iterete over every class
@@ -422,9 +465,9 @@ end;;
 * We implement type check procedure by reading in rules in the CRM
 *)
 	(* TODO: M C *)
-let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: expression) : static_type = begin
+and exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: expression) : static_type = begin
 	let static_type = match exp.expression_type with
-	| DynamicDispatch(caller_expression, method_identifier, parameter_expressions) -> begin
+	| DynamicDispatch(caller_expression, method_identifier, argument_expressions) -> begin
 		printf "Doing a Dynamic Dispatch\n" ;
 		(* We're assuming that this should return the Static Type (so the most general class that applies) *)
 		let caller_type: static_type = exp_typecheck o_e m_e c_e caller_expression in
@@ -438,41 +481,20 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: e
 			exit 1
 		end
 		in 
-		let (method_identifier_line_number, method_name): (string * string) = method_identifier in
-		try
-			(* This will return a list of ClassTypes, with the tail being the return type of the method
-			and the rest being parameter types *)
-			let method_information: static_type list = Hashtbl.find m_e (caller_type_name, method_name) in
-			(* We will return this later as the type for this DynamicDispatch, if we're successful *)
-			let return_type = List.nth method_information ((List.length method_information) - 1) in
-			(* We're now going to see if the parameters we parsed match what the definition expects.
-			For the number of parameters, we have to account for the return type being included in
-			the method information, so we subtract one from that. *)
-			let expected_parameter_count = (List.length method_information) - 1 in
-			let actual_parameter_count = List.length parameter_expressions in
-			if actual_parameter_count <> expected_parameter_count then begin
-				printf "ERROR: %s: Type-Check: wrong number of actual arguments (%d vs. %d)\n"
-						caller_expression.line_number actual_parameter_count expected_parameter_count ;
-				exit 1
-			end ;
-			
-			return_type
-		with Not_found -> begin
-			(* ERROR: 4: Type-Check: unknown method five in dispatch on String *)
-			printf "ERROR: %s: Type-Check: unknown method %s in dispatch on %s\n" 
-					method_identifier_line_number method_name caller_type_name ;
-			exit 1
-		end
+		(* This performs the Dispatch part of the type checking and returns the static type
+		returned by the dispatched method. *)
+		dispatch_type_check o_e m_e c_e caller_type_name caller_expression.line_number method_identifier argument_expressions
 	end
-	(* TODO Figure out if we can use the DynamicDispatch logic for this *)
-	| StaticDispatch(caller_expression, required_caller_type, method_identifier, parameter_expressions) -> begin
+	| StaticDispatch(caller_expression, required_caller_type, method_identifier, argument_expressions) -> begin
 		printf "Doing a Static Dispatch\n" ;
 		(* We're assuming that this should return the Static Type (so the most general class that applies) *)
 		let caller_type: static_type = exp_typecheck o_e m_e c_e caller_expression in
+	 
 		(* This translates our cool_type to a class_type *)
-		let (_, required_caller_type_name) = required_caller_type in
-		let required_caller_class_type = Class(required_caller_type_name) in
+		let (required_caller_line_number, required_caller_type_name) = required_caller_type in
+	    let required_caller_class_type = Class(required_caller_type_name) in
 		(* We need to make sure that the caller type is the same as the required type, based upon the static dispatch, then we use it *)
+		(* This should also catch the illegal self type case as well. *)
 		if not (is_subtype caller_type required_caller_class_type) then begin
 			printf "ERROR: %s: Type-Check: %s does not conform to %s in static dispatch\n" caller_expression.line_number (type_to_str caller_type) required_caller_type_name ;
 			exit 1
@@ -481,38 +503,23 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: e
 		| Class(type_name) -> type_name
 		| SELF_TYPE(_) -> begin
 			(* FIXME Is this correct? *)
-			printf "Illegal: Self type can not be invoked as the caller for a dynamic dispatch\n" ;
+			printf "Illegal: Self type can not be invoked as the caller for a static dispatch\n" ;
 			exit 1
 		end 
 		in 
-		(* We now check if the given method belongs to this class type. This first requires that we
-		retrieve the caller_type_name and the method_name, so that we can look it up. *)
-		let (method_identifier_line_number, method_name): (string * string) = method_identifier in
-		try
-			(* This will return a list of ClassTypes, with the tail being the return type of the method
-			and the rest being parameter types *)
-			let method_information: static_type list = Hashtbl.find m_e (caller_type_name, method_name) in
-			(* We will return this later as the type for this DynamicDispatch, if we're successful *)
-			let return_type = List.nth method_information ((List.length method_information) - 1) in
-			(* We're now going to see if the parameters we parsed match what the definition expects.
-			For the number of parameters, we have to account for the return type being included in
-			the method information, so we subtract one from that. *)
-			let expected_parameter_count = (List.length method_information) - 1 in
-			let actual_parameter_count = List.length parameter_expressions in
-			if actual_parameter_count <> expected_parameter_count then begin
-				printf "ERROR: %s: Type-Check: wrong number of actual arguments (%d vs. %d)\n"
-						caller_expression.line_number actual_parameter_count expected_parameter_count ;
-				exit 1
-			end ;
-			
-			return_type
-		with Not_found -> begin
-			(* ERROR: 4: Type-Check: unknown method five in dispatch on String *)
-			printf "ERROR: %s: Type-Check: unknown method %s in dispatch on %s\n" 
-					method_identifier_line_number method_name caller_type_name ;
-			exit 1
-		end
-	end	
+		(* This performs the Dispatch part of the type checking and returns the static type
+		returned by the dispatched method. *)
+		dispatch_type_check o_e m_e c_e required_caller_type_name caller_expression.line_number method_identifier argument_expressions
+	end
+	| SelfDispatch(method_identifier, argument_expressions) -> begin
+		printf "Doing a Self Dispatch\n" ;
+		(* This performs the Dispatch part of the type checking and returns the static type
+		returned by the dispatched method. *)
+		let class_name = type_to_str c_e in
+		let (dispatch_line_number, _) = method_identifier in
+		(* o_e m_e c_e caller_type_name caller_line_number method_identifier argument_expressions = begin *)
+		dispatch_type_check o_e m_e c_e class_name dispatch_line_number method_identifier argument_expressions
+	end
 	| New(e1) -> 
 		let (id_location, id_name) = e1 in
 		(match id_name with
@@ -586,7 +593,8 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: e
 		Class("Bool")
 	| Identifier((vloc, vname)) ->
 		printf "Doing a Identifier\n" ;
-		if Hashtbl.mem o_e vname then
+		if vname = "self" then SELF_TYPE(type_to_str c_e)
+		else if Hashtbl.mem o_e vname then
 			Hashtbl.find o_e vname
 	 	else begin
 	 		printf "ERROR: %s: Type-Check: Undeclared variable %s\n" vloc vname;
@@ -631,7 +639,7 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: e
     		!list_type
     | Let(bindings, exp) ->
     	printf "Doing a Let\n" ;
-		let new_o = o_e in  
+		let new_o = Hashtbl.copy o_e in  
 		List.iter(fun binding -> 
 			match binding with 
 			| BindingNoInit((id_location, id_name), (type_location, init_type)) -> 
@@ -721,7 +729,7 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: e
     				end 
     				else Hashtbl.add bound_class type_name true; 
     				if Hashtbl.mem class_hashtbl type_name then 
-    				let new_o = o_e in
+    				let new_o = Hashtbl.copy o_e in
     				begin
     					Hashtbl.add new_o id_name (Class type_name);
     					let current_type = exp_typecheck new_o m_e c_e expr in
