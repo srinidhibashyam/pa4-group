@@ -17,7 +17,7 @@ let type_to_str t = match t with
 (* String <= String *)
 (* Dog <= Animal if Dog inherits Animal *)
 let parent_map = Hashtbl.create 255;;
-
+let class_hashtbl = Hashtbl.create 255;;
 let rec is_subtype t1 t2 =    (*checking if t1 is subtype of t2*)
 	match t1, t2 with
 	| Class(x), Class(y) when x=y -> true  (*like String <= String*)
@@ -620,7 +620,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 	| Assign((id_location, id_name), exp) ->
 		printf "Doing a Assign\n" ;
 		if id_name = "self" then begin
-			printf "ERROR: %s: Cannot assign to self variable\n"  id_location;
+			printf "ERROR: %s: Type-Check: Cannot assign to self variable\n"  id_location;
             exit 1
 		end
 		else if Hashtbl.mem o_e id_name then 
@@ -629,7 +629,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
             if is_subtype te tid then
                 te
             else begin
-                printf "ERROR: %s: Assignment does not conform: %s has type %s\n"  id_location id_name (type_to_str tid);
+                printf "ERROR: %s: Type-Check: Assignment does not conform: %s has type %s\n"  id_location id_name (type_to_str tid);
                 exit 1
         	end
         else begin
@@ -640,7 +640,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		printf "Doing a If\n" ;
 		let predicate_type = exp_typecheck o_e m_e c_e predicate in
     	if predicate_type <> (Class "Bool") then begin
-    		printf "ERROR: %s: If statement's predicate expects type Bool, not type %s\n" exp.line_number (type_to_str predicate_type);
+    		printf "ERROR: %s: Type-Check: predicate has type %s instead of Bool\n" exp.line_number (type_to_str predicate_type);
     		exit 1
     	end
     	else
@@ -656,26 +656,57 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
     		!list_type
     | Let(bindings, exp) ->
     	printf "Doing a Let\n" ;
-		let new_o = o_e in  
+		let new_o = Hashtbl.copy o_e in  
 		List.iter(fun binding -> 
 			match binding with 
 			| BindingNoInit((id_location, id_name), (type_location, init_type)) -> 
-				Hashtbl.add new_o id_name (Class init_type)
+				if id_name = "self" then begin
+					printf "ERROR: %s: Type-Check: binding self in a let is not allowed\n" 
+							exp.line_number;
+						exit 1
+				end;
+				if Hashtbl.mem class_hashtbl init_type then 
+					match init_type with 
+					| "SELF_TYPE" -> Hashtbl.add new_o id_name (SELF_TYPE (type_to_str c_e))
+					| _ -> Hashtbl.add new_o id_name (Class init_type)
+				else begin
+					printf "ERROR: %s: Type-Check: initializer for %s was unknown type %s\n" 
+							exp.line_number id_name init_type;
+						exit 1
+				end
 			| BindingInit((id_location, id_name), (type_location, init_type), init_exp) ->
-				let init_exp_type = exp_typecheck o_e m_e c_e init_exp in 
-					if is_subtype init_exp_type (Class init_type) then 
-						Hashtbl.add new_o id_name (Class init_type)
+				if id_name = "self" then begin
+					printf "ERROR: %s: Type-Check: binding self in a let is not allowed\n" 
+							exp.line_number;
+						exit 1
+				end;
+				if Hashtbl.mem class_hashtbl init_type then begin
+					let id_type = match init_type with 
+					| "SELF_TYPE" -> (SELF_TYPE (type_to_str c_e))
+					| _ -> (Class init_type)
+					in
+					Hashtbl.add new_o id_name id_type;
+					let init_exp_type = exp_typecheck new_o m_e c_e init_exp in 
+					if is_subtype init_exp_type id_type then 
+						Hashtbl.add new_o id_name id_type
 					else begin
 						printf "ERROR: %s: Type-Check: initializer for %s was %s, did not match declared %s\n" 
-							id_location id_name (type_to_str init_exp_type) init_type;
+							exp.line_number id_name (type_to_str init_exp_type) init_type;
 						exit 1
 					end
+				end
+				else begin
+					printf "ERROR: %s: Type-Check: initializer for %s was %s, which is unknown\n" 
+							exp.line_number id_name init_type;
+						exit 1
+				end
+				
 		) bindings;
 		exp_typecheck new_o m_e c_e exp
 	| While(exp1, exp2) -> 
 		let t1 = exp_typecheck o_e m_e c_e exp1 in
 		if t1 <> Class("Bool") then begin
-			printf "ERROR: %s: While statement's predicate expects type Bool, not type %s\n" exp.line_number (type_to_str t1);
+			printf "ERROR: %s: Type-Check: predicate has type %s instead of Bool\n" exp.line_number (type_to_str t1);
     		exit 1
 		end
 		else begin
@@ -688,11 +719,53 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 	| Not(exp) -> 
 		let t = exp_typecheck o_e m_e c_e exp in 
 		if t <> Class("Bool") then begin 
-			printf "ERROR: %s: Not statement's expression expects type Bool, not type %s\n" exp.line_number (type_to_str t);
+			printf "ERROR: %s: Type-Check: Not statement's expression expects type Bool, not type %s\n" exp.line_number (type_to_str t);
     		exit 1
     	end
     	else 
     		Class("Bool")
+    | Case(exp, elements) ->
+    	let t0 = exp_typecheck o_e m_e c_e exp in 
+    	let bound_class = Hashtbl.create 255 in
+    	let case_type = ref (Class "Object") in
+    	let flag = ref false in
+    		List.iter(
+    			fun ele -> match ele with 
+    			| CaseElement((id_location, id_name), (type_location, type_name), expr) ->  
+    				if type_name = "SELF_TYPE" then begin 
+    					printf "ERROR: %s: Type-Check: using SELF_TYPE as a case branch type is not allowed\n" exp.line_number;
+    					exit 1
+    				end;
+    				if id_name = "self" then begin
+    					printf "ERROR: %s: Type-Check: using self in a case branch type is not allowed\n" exp.line_number;
+    					exit 1
+    				end;
+    				if Hashtbl.mem bound_class type_name then begin
+    					printf "ERROR: %s: Type-Check: case branch type %s is bound more than one\n" exp.line_number type_name;
+    					exit 1
+    				end 
+    				else Hashtbl.add bound_class type_name true; 
+    				if Hashtbl.mem class_hashtbl type_name then 
+    				let new_o = Hashtbl.copy o_e in
+    				begin
+    					Hashtbl.add new_o id_name (Class type_name);
+    					let current_type = exp_typecheck new_o m_e c_e expr in
+    					if !flag = false then begin
+    						flag := true;
+    						case_type := current_type
+    					end
+    					else
+    						case_type := lowest_upper_bound !case_type current_type
+    				end
+    				else begin
+    					printf "ERROR: %s: Type-Check: unknown type %s\n" exp.line_number type_name;
+    					exit 1
+    				end;
+
+    			| _ -> failwith ("cannot happen: Invalid Case Element")
+    		)elements;
+    		!case_type
+    		(*| CaseElement of identifier * cool_type * expression*)
 	| _ -> begin
 		printf "FATAL ERROR: Unmatched expression type\n" ;
 		exit 1
@@ -1028,10 +1101,22 @@ let main () = begin
 
 	) ast;
 
+	List.iter(
+		fun class_name -> 
+		Hashtbl.add class_hashtbl class_name true
+	)all_classes;
+	List.iter(
+		fun class_name -> 
+		Hashtbl.add class_hashtbl class_name true
+	)["Bool"; "Object"; "Int"; "IO"; "String"; "SELF_TYPE"];
 	(* Look for errors in Class Declarations*)	
 	let declared_classes = ref [] in
 	List.iter(fun current_class ->
 		let ((class_line_number, class_name), inherits, features) = current_class in
+		if class_name = "SELF_TYPE" then begin
+			printf "ERROR: %s: Type-Check: class named SELF_TYPE\n" class_line_number;
+			exit 1
+		end;
 		(* Look for redefined Basic Classes or already existing class*)
 		if ((List.mem class_name base_classes) ||
 				(List.mem class_name !declared_classes)) then begin
