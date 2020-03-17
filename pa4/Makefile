@@ -34,7 +34,7 @@ cool-imp-map:
 diff:
 	@echo "comparing results for: " $(file)
 	cool --parse $(file)
-	cool --class-map $(file)-ast --out ref
+	cool --type $(file)-ast --out ref
 	./checker-pa4.exe $(file)-ast
 	diff -b -B -w ref.cl-type $(file)-type
 
@@ -48,4 +48,5 @@ diff-all:
 		cool --class-map $$f-ast --out ref ;\
 		./checker-pa4.exe $$f-ast ;\
 		diff -b -B -w ref.cl-type $$f-type ;\
+		rm -f $$f-ast;\
 	done \
