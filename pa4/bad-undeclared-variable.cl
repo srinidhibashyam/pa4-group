@@ -2,7 +2,6 @@ class Main {
 	main() : Object { 5 };
 	y : List <- s;
 	x : List <- y;
-	s : Nil;
 };
 
 class List {

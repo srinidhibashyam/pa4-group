@@ -182,7 +182,7 @@ let rec get_super_classes input_class_name ast_list visited = begin
 			try
 				(* Check for forbidden super classes *)
 				if (List.mem iname ["Bool"; "Int"; "String"]) then begin
-					printf "ERROR: %s: Type-Check: class %s inherits from forbidden class %s.\n" iloc input_class_name iname;
+					printf "ERROR: %s: Type-Check: class %s inherits from forbidden class %s\n" iloc input_class_name iname;
 					exit 1 
 				end ;
 
@@ -215,7 +215,7 @@ let rec get_super_classes input_class_name ast_list visited = begin
 					let class_object = ((cloc, "Object"), None, obj_features) in
 					[class_object]; (* return Object*)
 				| _ ->
-					printf "ERROR: %s: Type-Check: Class %s Inherits from undefined class %s\n" 
+					printf "ERROR: %s: Type-Check: Class %s Inherits from unknown class %s\n" 
 						iloc input_class_name iname;
 					exit 1
 	with
@@ -559,7 +559,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		(* printf "Doing a Math Symbol\n" ; *)
 		let t1 = exp_typecheck o_e m_e c_e e1 in
 		if t1 <> (Class "Int") then begin
-			printf "ERROR: %s: Type-Check: arithmetic on Int %s instead of Ints\n" 
+			printf "ERROR: %s: Type-Check: arithmetic on %s Int instead of Ints\n" 
 				exp.line_number (type_to_str t1);
 			exit 1	
 		end;
@@ -590,7 +590,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		(* printf "Doing a Not\n" ; *)
 		let t1 = exp_typecheck o_e m_e c_e e1 in
 		if t1 <> (Class "Bool") then begin
-			printf "ERROR: %s: Type-Check: not applied to type %s instead of Boolean \n" 
+			printf "ERROR: %s: Type-Check: not applied to type %s instead of Bool \n" 
 				exp.line_number (type_to_str t1);
 			exit 1
 		end;
@@ -615,7 +615,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		else if Hashtbl.mem o_e vname then
 			Hashtbl.find o_e vname
 	 	else begin
-	 		printf "ERROR: %s: Type-Check: Undeclared variable %s\n" vloc vname;
+	 		printf "ERROR: %s: Type-Check: unbound identifier %s\n" vloc vname;
 			exit 1
 	 	end
 	| Assign((id_location, id_name), exp) ->
@@ -655,7 +655,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
         		list_type := exp_typecheck o_e m_e c_e e
     	) exps in 
     		!list_type
-    | Let(bindings, exp) ->
+    | Let(bindings, value_expression) ->
     	(* printf "Doing a Let\n" ; *)
 		let new_o = Hashtbl.copy o_e in  
 		List.iter(fun binding -> 
@@ -703,7 +703,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 				end
 				
 		) bindings;
-		exp_typecheck new_o m_e c_e exp
+		exp_typecheck new_o m_e c_e value_expression
 	| While(exp1, exp2) -> 
 		let t1 = exp_typecheck o_e m_e c_e exp1 in
 		if t1 <> Class("Bool") then begin

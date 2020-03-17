@@ -45,7 +45,7 @@ diff-all:
 		f="$$(basename -- $$file)";\
 		echo "comparing results for: $$f" ;\
 		cool --parse $$f ;\
-		cool --class-map $$f-ast --out ref ;\
+		cool --type $$f-ast --out ref ;\
 		./checker-pa4.exe $$f-ast ;\
 		diff -b -B -w ref.cl-type $$f-type ;\
 		rm -f $$f-ast;\
