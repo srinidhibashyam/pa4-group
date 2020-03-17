@@ -1323,6 +1323,7 @@ let main () = begin
                                 if not(Hashtbl.mem parents_methods_tbl method_name) then
                                         num := !num + 1
                         end
+                        | _ -> ()
                 ) features ;
                 (Hashtbl.length parents_methods_tbl) + !num
         in
@@ -1335,6 +1336,7 @@ let main () = begin
                                         Hashtbl.replace map method_name (formals, class_name, exp)
                                 end
                         end
+                        | _ -> ()
                 ) features ;
                 map
         in
@@ -1461,7 +1463,48 @@ let main () = begin
                 | Some(_, iname) ->
                         fprintf f_out "%s\n" iname
         end
-    ) all_classes ;
+        ) all_classes ;
+
+        let output_arg arg =
+                (*printf "111\n";*)
+                let arg_name, arg_type = arg in
+                output_identifier arg_name;
+                output_identifier arg_type;
+        in
+
+        let output_feature feature = 
+                match feature with 
+		| Attribute ((attr_loc, attr_name), (decl_loc, decl_type), exp) ->
+                                fprintf f_out "attribute_no_init\n" ;
+                                output_identifier (attr_loc, attr_name);
+                                output_identifier (decl_loc, decl_type)
+                | Method(method_name, args, type_name, exp) ->
+                                fprintf f_out "method\n" ;
+                                output_identifier method_name;
+                                fprintf f_out "%d\n" (List.length args);
+                                List.iter output_arg args;
+                                output_identifier type_name;
+                                output_exp exp
+        in
+
+        (* Output ast *)
+        fprintf f_out "%d\n" (List.length ast);
+        List.iter (fun ((cls_line, cls_name), inherits, features) -> 
+                fprintf f_out "%s\n" cls_line;
+                fprintf f_out "%s\n" cls_name;
+                begin match inherits with
+                | None -> 
+                        fprintf f_out "no_inherits\n" 
+                | Some(parent_cls_line, parent_cls_name) ->
+                        fprintf f_out "inherits\n";
+                        fprintf f_out "%s\n" parent_cls_line;
+                        fprintf f_out "%s\n" parent_cls_name;
+                end;
+                fprintf f_out "%d\n" (List.length features);
+                List.iter output_feature features
+
+        ) ast;
+
 
 
 end ;;
