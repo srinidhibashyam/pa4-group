@@ -489,10 +489,12 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		printf "Doing a Static Dispatch\n" ;
 		(* We're assuming that this should return the Static Type (so the most general class that applies) *)
 		let caller_type: static_type = exp_typecheck o_e m_e c_e caller_expression in
+	 
 		(* This translates our cool_type to a class_type *)
-		let (_, required_caller_type_name) = required_caller_type in
-		let required_caller_class_type = Class(required_caller_type_name) in
+		let (required_caller_line_number, required_caller_type_name) = required_caller_type in
+	    let required_caller_class_type = Class(required_caller_type_name) in
 		(* We need to make sure that the caller type is the same as the required type, based upon the static dispatch, then we use it *)
+		(* This should also catch the illegal self type case as well. *)
 		if not (is_subtype caller_type required_caller_class_type) then begin
 			printf "ERROR: %s: Type-Check: %s does not conform to %s in static dispatch\n" caller_expression.line_number (type_to_str caller_type) required_caller_type_name ;
 			exit 1
@@ -873,11 +875,6 @@ let main () = begin
 			| "static_dispatch" ->
 			                 let expr = read_exp() in 
 			                 let typ = read_id() in 
-			                 let type_loc, type_name = typ in
-			                        if type_name = "SELF_TYPE" then begin
-			                                printf "Error: %s: Type-Check: SELF_TYPE does not conform to SELF_TYPE in static dispatch %s\n" type_loc type_name;
-			                                exit 1;
-			                        end ;
 			                 let meth = read_id() in 
 			                 let expr_list = read_list read_exp in 
 			                 StaticDispatch (expr, typ, meth, expr_list)

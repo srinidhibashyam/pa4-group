@@ -3,7 +3,8 @@
 
 Class Main {
 	main(): String {
-		let test: String <- (new OtherClass)@OtherClass.extremely_complex_method(1) in
+		let test: String <- (new OtherClass)@
+			OtherClass.extremely_complex_method(1) in
 		"Whales"
 	};
 };
