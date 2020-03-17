@@ -3,7 +3,7 @@
 Class Main {
 	main(): Object {
 		let test: String <- (new SpecialType)
-				@SpecialType.fire("Blue") in
+				.fire("Blue") in
 		"test"
 	};
 };
