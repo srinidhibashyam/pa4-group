@@ -9,7 +9,7 @@ type static_type =
 (* Procedure to print these *)
 let type_to_str t = match t with
 	| Class(x) -> x (*"Int" or "Object" *)
-	| SELF_TYPE(c) -> "SELF_TYPE" (*SELF_TYPE_c *)
+	| SELF_TYPE(c) -> "SELF_TYPE(" ^ c ^ ")"  (*SELF_TYPE_c *)
 
 (* Operations to be performed on these types *)
 (* <= --- subtyping (Liskov Substitution Principle)*)
@@ -69,13 +69,13 @@ in
 
 (* mapping from object identifier (names) to types *)
 type obj_env = (string, static_type) Hashtbl.t
-let empty_obj_env () = Hashtbl.create 255
+let empty_obj_env (): obj_env = Hashtbl.create 255
 
 
 type class_method = string * string
 (* Maps a (class_name, method_name) -> [..List of formal types, Method return type] *)
 and method_env = (class_method, (static_type list)) Hashtbl.t
-let empty_method_env () = Hashtbl.create 255
+let empty_method_env (): method_env = Hashtbl.create 255
 
 
 type cool_program = cool_class list
@@ -313,28 +313,28 @@ end;;
 
 
 
+(* The child class name is optional and is used to specify a child class name
+that should be used as well for the population of the method environment*)
 let add_method_types meth_env input_class = begin
 	(* Add input_class methods to object environment*)	
 	let own_methods =  get_own_methods input_class in
 	let ((_, class_name), _, _) = input_class in
-	List.iter(fun own_feat -> 
+	List.iter (fun own_feat -> 
 		match own_feat with
 		|  Method ((_, m_name), formals, (_, return_type),_) -> 
-			let formal_types = List.map (fun (_,(_,fname)) -> 
-					if fname = class_name then 
-						SELF_TYPE fname
-					else 
-						Class fname
-				) formals in
-			let key = (class_name,m_name) in
-			let return_class = begin
-				if return_type = class_name then 
-					SELF_TYPE return_type
+			let formal_types: static_type list = List.map (fun (_,(_,fname)) -> 
+				if fname = "SELF_TYPE" then 
+					SELF_TYPE class_name
+				else 
+					Class fname
+			) formals in
+			let return_type_class: static_type = begin
+				if return_type = "SELF_TYPE" then 
+					SELF_TYPE class_name
 				else 
 					Class return_type 
 			end in
-			let value = formal_types  @  [return_class] in
-			Hashtbl.add meth_env key value;
+			Hashtbl.add meth_env (class_name, m_name) (formal_types @ [return_type_class])
 		| Attribute _ -> ();
 	) own_methods;
 end;;
@@ -378,7 +378,7 @@ let check_method_redefines in_method in_class = begin
 		| Some(feature) -> 
 			let res = match feature with
 				| Attribute _ -> failwith "cannot happen: found attribute"	
-				| Method (_, parent_formals, (_, parent_return_type),_) -> 
+				| Method (_, parent_formals, (_, parent_return_type), _) -> 
 					(* Number of Formals should match *)
 					if not (List.length parent_formals = List.length in_formals) then begin
 						raise (MethodRedefineError "changes number of formals")
@@ -426,7 +426,50 @@ let check_attribute_redefines in_attribute in_class = begin
 	all_good	
 end;;
 
+(* This is a generic function that handles the core type checking that is shared between
+static, dynamic, and self dispatch *)
+let rec dispatch_type_check o_e m_e c_e caller_type_name caller_line_number method_identifier argument_expressions = begin
+	let (method_identifier_line_number, method_name): (string * string) = method_identifier in
+	try
+		(* This will return a list of ClassTypes, with the tail being the return type of the method
+		and the rest being parameter types *)
+		let method_information: static_type list = Hashtbl.find m_e (caller_type_name, method_name) in
+		(* We will return this later as the type for this DynamicDispatch, if we're successful *)
+		let return_type = List.nth method_information ((List.length method_information) - 1) in
+		(* The last item of the method information is the require type, so we have to get rid
+		of it. We do so by reversing the list, then removing the first entry, which was the 
+		end of the other list, and then we reverse it again to put it back in the old order.*)
+		let formal_types = List.rev (List.tl (List.rev method_information)) in
+		
+		(* First we check if the correct number of arguments were provided. *)
+		let actual_argument_count = (List.length formal_types) in
+		(* Parameter refers to the contract of the method while arguments 
+		refer to the values passed to the dispatch. *)
+		let expected_parameter_count = List.length argument_expressions in
+		if actual_argument_count <> expected_parameter_count then begin
+			printf "ERROR: %s: Type-Check: wrong number of actual arguments (%d vs. %d)\n"
+					caller_line_number actual_argument_count expected_parameter_count ;
+			exit 1
+		end ;
 
+		(* Next we check if the provided arguments are all subtypes of the expected
+		arguments. *)
+		List.iteri (fun i (argument_expression, formal_type: expression * static_type) ->
+			let argument_expression_type: static_type = exp_typecheck o_e m_e c_e argument_expression in
+			if not (is_subtype argument_expression_type formal_type) then begin
+				printf "ERROR: %s: Type-Check: argument #%d type %s does not conform to formal type %s\n" 
+					caller_line_number (i+1) (type_to_str argument_expression_type) (type_to_str formal_type) ;
+				exit 1
+			end
+		) (List.combine argument_expressions formal_types) ;
+					
+		return_type
+	with Not_found -> begin
+		printf "ERROR: %s: Type-Check: unknown method %s in dispatch on %s\n" 
+				method_identifier_line_number method_name caller_type_name ;
+		exit 1
+	end
+end
 
 (* Expression Type Checking 
 * Iterete over every class
@@ -434,10 +477,10 @@ end;;
 *			Then typecheck the experessions in that feature.
 * We implement type check procedure by reading in rules in the CRM
 *)
-	(* TODO: M C *)
-let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: expression) : static_type = begin
+and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: expression) : static_type = begin
+	printf "Doing an expression type check\n" ;
 	let static_type = match exp.expression_type with
-	| DynamicDispatch(caller_expression, method_identifier, parameter_expressions) -> begin
+	| DynamicDispatch(caller_expression, method_identifier, argument_expressions) -> begin
 		printf "Doing a Dynamic Dispatch\n" ;
 		(* We're assuming that this should return the Static Type (so the most general class that applies) *)
 		let caller_type: static_type = exp_typecheck o_e m_e c_e caller_expression in
@@ -451,42 +494,24 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: e
 			exit 1
 		end
 		in 
-		let (method_identifier_line_number, method_name): (string * string) = method_identifier in
-		try
-			(* This will return a list of ClassTypes, with the tail being the return type of the method
-			and the rest being parameter types *)
-			let method_information: static_type list = Hashtbl.find m_e (caller_type_name, method_name) in
-			(* We will return this later as the type for this DynamicDispatch, if we're successful *)
-			let return_type = List.nth method_information ((List.length method_information) - 1) in
-			(* We're now going to see if the parameters we parsed match what the definition expects.
-			For the number of parameters, we have to account for the return type being included in
-			the method information, so we subtract one from that. *)
-			let expected_parameter_count = (List.length method_information) - 1 in
-			let actual_parameter_count = List.length parameter_expressions in
-			if actual_parameter_count <> expected_parameter_count then begin
-				printf "ERROR: %s: Type-Check: wrong number of actual arguments (%d vs. %d)\n"
-						caller_expression.line_number actual_parameter_count expected_parameter_count ;
-				exit 1
-			end ;
-			
-			return_type
-		with Not_found -> begin
-			(* ERROR: 4: Type-Check: unknown method five in dispatch on String *)
-			printf "ERROR: %s: Type-Check: unknown method %s in dispatch on %s\n" 
-					method_identifier_line_number method_name caller_type_name ;
-			exit 1
-		end
+		(* This performs the Dispatch part of the type checking and returns the static type
+		returned by the dispatched method. *)
+		dispatch_type_check o_e m_e c_e caller_type_name caller_expression.line_number method_identifier argument_expressions
 	end
-	(* TODO Figure out if we can use the DynamicDispatch logic for this *)
-	| StaticDispatch(caller_expression, required_caller_type, method_identifier, parameter_expressions) -> begin
+	| StaticDispatch(caller_expression, required_caller_type, method_identifier, argument_expressions) -> begin
 		printf "Doing a Static Dispatch\n" ;
 		(* We're assuming that this should return the Static Type (so the most general class that applies) *)
 		let caller_type: static_type = exp_typecheck o_e m_e c_e caller_expression in
+	 
 		(* This translates our cool_type to a class_type *)
-		let (_, required_caller_type_name) = required_caller_type in
-		let required_caller_class_type = Class(required_caller_type_name) in
+		let (required_caller_line_number, required_caller_type_name) = required_caller_type in
+	    let required_caller_class_type = match required_caller_type_name with
+	    | "SELF_TYPE" -> SELF_TYPE(type_to_str c_e)
+	    | _           -> Class(required_caller_type_name)
+	    in
 		(* We need to make sure that the caller type is the same as the required type, based upon the static dispatch, then we use it *)
-		if not (is_subtype caller_type required_caller_class_type) then begin
+		(* This should also catch the illegal self type case as well. *)
+		if required_caller_type_name = "SELF_TYPE" or not (is_subtype caller_type required_caller_class_type) then begin
 			printf "ERROR: %s: Type-Check: %s does not conform to %s in static dispatch\n" caller_expression.line_number (type_to_str caller_type) required_caller_type_name ;
 			exit 1
 		end ;
@@ -494,38 +519,23 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: e
 		| Class(type_name) -> type_name
 		| SELF_TYPE(_) -> begin
 			(* FIXME Is this correct? *)
-			printf "Illegal: Self type can not be invoked as the caller for a dynamic dispatch\n" ;
+			printf "Illegal: Self type can not be invoked as the caller for a static dispatch\n" ;
 			exit 1
 		end 
 		in 
-		(* We now check if the given method belongs to this class type. This first requires that we
-		retrieve the caller_type_name and the method_name, so that we can look it up. *)
-		let (method_identifier_line_number, method_name): (string * string) = method_identifier in
-		try
-			(* This will return a list of ClassTypes, with the tail being the return type of the method
-			and the rest being parameter types *)
-			let method_information: static_type list = Hashtbl.find m_e (caller_type_name, method_name) in
-			(* We will return this later as the type for this DynamicDispatch, if we're successful *)
-			let return_type = List.nth method_information ((List.length method_information) - 1) in
-			(* We're now going to see if the parameters we parsed match what the definition expects.
-			For the number of parameters, we have to account for the return type being included in
-			the method information, so we subtract one from that. *)
-			let expected_parameter_count = (List.length method_information) - 1 in
-			let actual_parameter_count = List.length parameter_expressions in
-			if actual_parameter_count <> expected_parameter_count then begin
-				printf "ERROR: %s: Type-Check: wrong number of actual arguments (%d vs. %d)\n"
-						caller_expression.line_number actual_parameter_count expected_parameter_count ;
-				exit 1
-			end ;
-			
-			return_type
-		with Not_found -> begin
-			(* ERROR: 4: Type-Check: unknown method five in dispatch on String *)
-			printf "ERROR: %s: Type-Check: unknown method %s in dispatch on %s\n" 
-					method_identifier_line_number method_name caller_type_name ;
-			exit 1
-		end
-	end	
+		(* This performs the Dispatch part of the type checking and returns the static type
+		returned by the dispatched method. *)
+		dispatch_type_check o_e m_e c_e required_caller_type_name caller_expression.line_number method_identifier argument_expressions
+	end
+	| SelfDispatch(method_identifier, argument_expressions) -> begin
+		printf "Doing a Self Dispatch\n" ;
+		(* This performs the Dispatch part of the type checking and returns the static type
+		returned by the dispatched method. *)
+		let class_name = type_to_str c_e in
+		let (dispatch_line_number, _) = method_identifier in
+		(* o_e m_e c_e caller_type_name caller_line_number method_identifier argument_expressions = begin *)
+		dispatch_type_check o_e m_e c_e class_name dispatch_line_number method_identifier argument_expressions
+	end
 	| New(e1) -> 
 		let (id_location, id_name) = e1 in
 		(match id_name with
@@ -599,7 +609,9 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (c_e: static_type) (exp: e
 		Class("Bool")
 	| Identifier((vloc, vname)) ->
 		printf "Doing a Identifier\n" ;
-		if Hashtbl.mem o_e vname then
+		if vname = "self" then
+			SELF_TYPE(type_to_str c_e)
+		else if Hashtbl.mem o_e vname then
 			Hashtbl.find o_e vname
 	 	else begin
 	 		printf "ERROR: %s: Type-Check: Undeclared variable %s\n" vloc vname;
@@ -888,11 +900,6 @@ let main () = begin
 			| "static_dispatch" ->
 			                 let expr = read_exp() in 
 			                 let typ = read_id() in 
-			                 let type_loc, type_name = typ in
-			                        if type_name = "SELF_TYPE" then begin
-			                                printf "Error: %s: Type-Check: SELF_TYPE does not conform to SELF_TYPE in static dispatch %s\n" type_loc type_name;
-			                                exit 1;
-			                        end ;
 			                 let meth = read_id() in 
 			                 let expr_list = read_list read_exp in 
 			                 StaticDispatch (expr, typ, meth, expr_list)
@@ -993,7 +1000,7 @@ let main () = begin
 	end;
 
 	(* Set up global maps *)
-	let m_e = empty_method_env () in (* add features to obj env *)
+	let m_e: method_env = empty_method_env () in (* add features to obj env *)
 	List.iter(fun current_class ->
 		(* populate parent map *)
 		let ((class_line_number, class_name), inherits, features) = current_class in
@@ -1002,12 +1009,22 @@ let main () = begin
 		Hashtbl.add parent_map class_name parents_names;
 
 		(* populate method environment *)
-		(* Add parent methods *)
-		List.iter(fun super_class ->
-			add_method_types m_e super_class;
-		) parents;
-		(* Add self methods *)
-		add_method_types m_e current_class;		
+		(* Add self methods *)		
+		add_method_types m_e current_class ;
+		(* Add parent methods to this class *)
+		(List.iter (fun super_class ->
+			let own_methods = get_own_methods super_class in
+			let ((_, class_name), _, _) = super_class in
+			List.iter (
+				fun feature -> 
+					match feature with
+					|  Method ((_, method_name), formals, (_, return_type),_) -> 
+						let formal_types = List.map (fun (_, (_, formal_name)) -> Class formal_name) formals in
+						let ((_, current_class_name), _, _) = current_class in
+						Hashtbl.add m_e (current_class_name, method_name) (formal_types @ [Class return_type]) ;
+					| _ -> ()
+			) own_methods
+		) parents )
 
 	) ast;
 
@@ -1063,7 +1080,7 @@ let main () = begin
 					| MethodRedefineError(msg) -> 
 						printf "ERROR: %s: Type-Check: class %s redefines method %s and %s\n" 
 								method_line_number class_name method_name msg;
-						exit 1;
+						exit 1
 					| _ -> failwith "cannot happen: Unknown Method Redefines Error";
 				) supclasses;
 
@@ -1075,7 +1092,7 @@ let main () = begin
 	  			if not (is_subtype init_type (Class return_type)) then begin
 	  				printf "ERROR: %s: Type-Check: %s does not conform to %s in method %s\n" 
 	  					method_line_number (type_to_str init_type) return_type method_name;
-					exit 1;
+					exit 1
 				end;
 
 			| _ -> failwith "cannot happen: found attribute"
@@ -1100,7 +1117,7 @@ let main () = begin
 					| _ -> failwith "cannot happen: Unknown Attribute Redefines Error";
 				) supclasses;
 
-				begin match exp with
+				(match exp with
 					| Some(init_exp) -> 
 						(* x: Int <- 5 + 3 *)
 			  			let init_type = exp_typecheck o_e m_e (Class class_name) init_exp in
@@ -1115,15 +1132,12 @@ let main () = begin
 						end;
 
 					| None -> ()
-				end;
+				)
 
 			| _ -> failwith "cannot happen: found method"
 
 
 		) own_attributes;
-
-
-
 	) ast;
 
 	(* DONE WITH ERROR CHECKING*)
@@ -1282,15 +1296,14 @@ let main () = begin
 						 -> class_name_candidate = class_name) ast in
 				let  (_, inherits, features) = curr_class in
 				get_all_attributes curr_class ast
-
 			with
 			| _ -> (*bool/int/object*) []
 		in
 		fprintf f_out "%d\n" (List.length attributes);
 		List.iter ( fun attribute -> match attribute with
-		| Attribute ((_,attribute_name), (_, attribute_type), None) -> 
+		| Attribute ((_, attribute_name), (_, attribute_type), None) -> 
 			fprintf f_out "no_initializer\n%s\n%s\n" attribute_name attribute_type;
-		| Attribute ((_,attribute_name), (_, attribute_type), (Some initialization_expression)) ->
+		| Attribute ((_, attribute_name), (_, attribute_type), (Some initialization_expression)) ->
 			fprintf f_out "initializer\n%s\n%s\n" attribute_name attribute_type;
 			output_exp initialization_expression;
 		| Method _ -> failwith "method unexpected"
@@ -1324,8 +1337,8 @@ let main () = begin
 
         let get_number_of_methods parents_methods_tbl features = 
                 let num = ref 0 in
-                List.iter (fun f ->
-                        match f with
+                List.iter (fun feature ->
+                        match feature with
                         | Method((_,method_name),_,_,_) -> begin
                                 if not(Hashtbl.mem parents_methods_tbl method_name) then
                                         num := !num + 1
@@ -1335,35 +1348,34 @@ let main () = begin
                 (Hashtbl.length parents_methods_tbl) + !num
         in
         let exclude_overriden_methods parents_methods_tbl features class_name =
-                let map = (Hashtbl.copy parents_methods_tbl) in
-                List.iter (fun f ->
-                        match f with
-                        | Method ((_,method_name), formals, method_type, exp) -> begin
-                                if (Hashtbl.mem map method_name) then begin 
-                                        Hashtbl.replace map method_name (formals, class_name, exp)
-                                end
-                        end
-                        | _ -> ()
+            let map = (Hashtbl.copy parents_methods_tbl) in
+            (List.iter (fun feature ->
+                match feature with
+                | Method ((_,method_name), formals, method_type, exp) ->
+                    if (Hashtbl.mem map method_name) then begin 
+                            Hashtbl.replace map method_name (formals, class_name, exp)
+                    end
+                | _ -> ()
                 ) features ;
-                map
-        in
+            map)
+        in	
 
         List.iter (fun ((cls_loc, cls_name), inherits, features) ->
-                match inherits with
-                | None -> begin 
-                    vertices := ("Object", cls_name) :: !vertices;
-                    ()
-                end;
-                | Some(inh_loc, inh_name) -> 
-                                vertices := (inh_name, cls_name) :: !vertices;
+            match inherits with
+            | None -> begin 
+                vertices := ("Object", cls_name) :: !vertices;
+                ()
+            end;
+            | Some(inh_loc, inh_name) -> 
+                vertices := (inh_name, cls_name) :: !vertices;
         ) ast ;
         vertices := add_missing_edges !vertices;
         let sorted_classes = topo_sort !vertices in
 
         let output_formal_name formals =
-                List.iter( fun ((_, formal_name),_) ->
-                        fprintf f_out "%s\n" formal_name
-                ) formals                 
+            List.iter( fun ((_, formal_name),_) ->
+                fprintf f_out "%s\n" formal_name
+            ) formals                 
         in
 
         let ordered_method_names = ref [] in
@@ -1372,35 +1384,35 @@ let main () = begin
          * What it does? it itrates over class names (that are in topological order) and saves all
          * methods that it declares and override.*)
         let get_parents_methods_tbl class_names super_class_list =
-                let methods_map = Hashtbl.create 255 in
-                ordered_method_names := [];
-                List.iter (fun class_name ->
-                        let super_class_option = List.find_opt (fun ((_,cname),_,_)-> class_name = cname) super_class_list in
-                        if not (Option.none = super_class_option) then begin
-                                let ((_, super_class_name),_,features) = Option.get super_class_option in
-                                (* add methods to hashtbl starting from the ultimate class that override method *)
-                                List.iter (fun current_method ->
-                                        match current_method with
-                                        | Attribute _ -> ()
-                                        | Method ((_,method_name), formals, method_type, exp) -> begin
-                                                if not(List.mem method_name !ordered_method_names) then
-                                                        ordered_method_names := !ordered_method_names @ [method_name];
-                                                let _, method_type_val = method_type in
-                                                Hashtbl.replace methods_map method_name (formals, class_name, exp);
-                                        end
-                                ) features ;
-                        end;
-                ) class_names ;
-                methods_map
+            let methods_map = Hashtbl.create 255 in
+            ordered_method_names := [];
+            List.iter (fun class_name ->
+                    let super_class_option = List.find_opt (fun ((_,cname),_,_)-> class_name = cname) super_class_list in
+                    if not (Option.none = super_class_option) then begin
+                            let ((_, super_class_name),_,features) = Option.get super_class_option in
+                            (* add methods to hashtbl starting from the ultimate class that override method *)
+                            List.iter (fun current_method ->
+                                    match current_method with
+                                    | Attribute _ -> ()
+                                    | Method ((_,method_name), formals, method_type, exp) -> begin
+                                            if not(List.mem method_name !ordered_method_names) then
+                                                    ordered_method_names := !ordered_method_names @ [method_name];
+                                            let _, method_type_val = method_type in
+                                            Hashtbl.replace methods_map method_name (formals, class_name, exp);
+                                    end
+                            ) features ;
+                    end;
+            ) class_names ;
+            methods_map
         in
 
         (* get sorted list of names from a hastable *)
         let get_ordered_method_names_parent_classes tbl =
-                let parents_method_list = ref (Hashtbl.fold (fun method_name value acc -> 
-                                        method_name :: acc 
-                ) tbl []) in
-                (*List.sort compare !parents_method_list*)
-                !parents_method_list
+            let parents_method_list = ref (Hashtbl.fold (fun method_name value acc -> 
+                                    method_name :: acc 
+            ) tbl []) in
+            (*List.sort compare !parents_method_list*)
+            !parents_method_list
         in
 
         (* Output each method in turn (in order of appearance, with inherited or overridden methods from a superclass coming first; internal methods are defined to appear in ascending alphabetical order) *)
