@@ -503,13 +503,22 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		| Class(type_name) -> type_name
 		| SELF_TYPE(_) -> begin
 			(* FIXME Is this correct? *)
-			printf "Illegal: Self type can not be invoked as the caller for a dynamic dispatch\n" ;
+			printf "Illegal: Self type can not be invoked as the caller for a static dispatch\n" ;
 			exit 1
 		end 
 		in 
 		(* This performs the Dispatch part of the type checking and returns the static type
 		returned by the dispatched method. *)
 		dispatch_type_check o_e m_e c_e required_caller_type_name caller_expression.line_number method_identifier argument_expressions
+	end
+	| SelfDispatch(method_identifier, argument_expressions) -> begin
+		printf "Doing a Self Dispatch\n" ;
+		(* This performs the Dispatch part of the type checking and returns the static type
+		returned by the dispatched method. *)
+		let class_name = type_to_str c_e in
+		let (dispatch_line_number, _) = method_identifier in
+		(* o_e m_e c_e caller_type_name caller_line_number method_identifier argument_expressions = begin *)
+		dispatch_type_check o_e m_e c_e class_name dispatch_line_number method_identifier argument_expressions
 	end
 	| New(e1) -> 
 		let (id_location, id_name) = e1 in
