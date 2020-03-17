@@ -1140,8 +1140,8 @@ let main () = begin
 		let own_methods = get_own_methods current_class in
 		List.iter(fun own_method -> 
 			match own_method with
-			| Method ((method_line_number,method_name), formals, ret_type, exp) -> 
-				let in_method = ((method_line_number,method_name), formals, ret_type, exp) in
+			| Method ((method_line_number,method_name), formals, return_type, exp) -> 
+				let in_method = ((method_line_number,method_name), formals, return_type, exp) in
 
 				(* Check for duplicate formals in the method. *)
 				let formal_names = ref [] in
@@ -1174,10 +1174,14 @@ let main () = begin
 				(* Type check method expression *)
 
 				let init_type = exp_typecheck new_o_env m_e (Class class_name) exp in
-	  			let (return_loc, return_type) = ret_type in
-	  			if not (is_subtype init_type (Class return_type)) then begin
+	  			let (_, return_type_name) = return_type in
+	  			let return_type_class: static_type = match return_type_name with
+	  			| "SELF_TYPE" -> SELF_TYPE class_name
+	  			| _           -> Class return_type_name
+	  			in
+	  			if not (is_subtype init_type return_type_class) then begin
 	  				printf "ERROR: %s: Type-Check: %s does not conform to %s in method %s\n" 
-	  					method_line_number (type_to_str init_type) return_type method_name;
+	  					method_line_number (type_to_str init_type) (type_to_str return_type_class) method_name ;
 					exit 1
 				end;
 
