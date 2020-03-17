@@ -1279,7 +1279,7 @@ let main () = begin
 			with
 			| _ -> (*bool/int/object*) []
 		in
-		fprintf f_out "%d\n" (List.length attributes);
+		fprintf f_out "!!%d\n" (List.length attributes);
 		List.iter ( fun attribute -> match attribute with
 		| Attribute ((_,attribute_name), (_, attribute_type), None) -> 
 			fprintf f_out "no_initializer\n%s\n%s\n" attribute_name attribute_type;
@@ -1466,7 +1466,6 @@ let main () = begin
         ) all_classes ;
 
         let output_arg arg =
-                (*printf "111\n";*)
                 let arg_name, arg_type = arg in
                 output_identifier arg_name;
                 output_identifier arg_type;
@@ -1475,9 +1474,16 @@ let main () = begin
         let output_feature feature = 
                 match feature with 
 		| Attribute ((attr_loc, attr_name), (decl_loc, decl_type), exp) ->
-                                fprintf f_out "attribute_no_init\n" ;
-                                output_identifier (attr_loc, attr_name);
-                                output_identifier (decl_loc, decl_type)
+                                if (exp =  Option.none)then begin 
+                                        fprintf f_out "attribute_no_init\n" ;
+                                        output_identifier (attr_loc, attr_name);
+                                        output_identifier (decl_loc, decl_type)
+                                end else begin
+                                        fprintf f_out "attribute_init\n" ;
+                                        output_identifier (attr_loc, attr_name);
+                                        output_identifier (decl_loc, decl_type);
+                                        output_exp (Option.get exp)
+                                end
                 | Method(method_name, args, type_name, exp) ->
                                 fprintf f_out "method\n" ;
                                 output_identifier method_name;
