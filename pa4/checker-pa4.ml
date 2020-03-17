@@ -9,7 +9,7 @@ type static_type =
 (* Procedure to print these *)
 let type_to_str t = match t with
 	| Class(x) -> x (*"Int" or "Object" *)
-	| SELF_TYPE(c) -> "SELF_TYPE" (*SELF_TYPE_c *)
+	| SELF_TYPE(c) -> "SELF_TYPE(" ^ c ^ ")"  (*SELF_TYPE_c *)
 
 (* Operations to be performed on these types *)
 (* <= --- subtyping (Liskov Substitution Principle)*)
@@ -310,14 +310,14 @@ let add_method_types meth_env input_class = begin
 		match own_feat with
 		|  Method ((_, m_name), formals, (_, return_type),_) -> 
 			let formal_types: static_type list = List.map (fun (_,(_,fname)) -> 
-				if fname = class_name then 
-					SELF_TYPE fname
+				if fname = "SELF_TYPE" then 
+					SELF_TYPE class_name
 				else 
 					Class fname
 			) formals in
 			let return_type_class: static_type = begin
-				if return_type = class_name then 
-					SELF_TYPE return_type
+				if return_type = "SELF_TYPE" then 
+					SELF_TYPE class_name
 				else 
 					Class return_type 
 			end in
@@ -582,7 +582,9 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		Class("Bool")
 	| Identifier((vloc, vname)) ->
 		printf "Doing a Identifier\n" ;
-		if Hashtbl.mem o_e vname then
+		if vname = "self" then
+			SELF_TYPE(type_to_str c_e)
+		else if Hashtbl.mem o_e vname then
 			Hashtbl.find o_e vname
 	 	else begin
 	 		printf "ERROR: %s: Type-Check: Undeclared variable %s\n" vloc vname;
@@ -1056,7 +1058,7 @@ let main () = begin
 					| MethodRedefineError(msg) -> 
 						printf "ERROR: %s: Type-Check: class %s redefines method %s and %s\n" 
 								method_line_number class_name method_name msg;
-						exit 1;
+						exit 1
 					| _ -> failwith "cannot happen: Unknown Method Redefines Error";
 				) supclasses;
 
@@ -1068,7 +1070,7 @@ let main () = begin
 	  			if not (is_subtype init_type (Class return_type)) then begin
 	  				printf "ERROR: %s: Type-Check: %s does not conform to %s in method %s\n" 
 	  					method_line_number (type_to_str init_type) return_type method_name;
-					exit 1;
+					exit 1
 				end;
 
 			| _ -> failwith "cannot happen: found attribute"
@@ -1093,7 +1095,7 @@ let main () = begin
 					| _ -> failwith "cannot happen: Unknown Attribute Redefines Error";
 				) supclasses;
 
-				begin match exp with
+				(match exp with
 					| Some(init_exp) -> 
 						(* x: Int <- 5 + 3 *)
 			  			let init_type = exp_typecheck o_e m_e (Class class_name) init_exp in
@@ -1108,15 +1110,12 @@ let main () = begin
 						end;
 
 					| None -> ()
-				end;
+				)
 
 			| _ -> failwith "cannot happen: found method"
 
 
 		) own_attributes;
-
-
-
 	) ast;
 
 	(* DONE WITH ERROR CHECKING*)
@@ -1273,7 +1272,7 @@ let main () = begin
 
 			try
 				let  (_, inherits, features) = List.find(
-					fun ((_,class_name_candidate),_,_)-> class_name_candidate = class_name
+					fun ((_ , class_name_candidate), _, _)-> class_name_candidate = class_name
 				) ast in
 				(*Filter only Attribute features *)
 				List.filter (
@@ -1287,9 +1286,9 @@ let main () = begin
 		in
 		fprintf f_out "%d\n" (List.length attributes);
 		List.iter ( fun attribute -> match attribute with
-		| Attribute ((_,attribute_name), (_, attribute_type), None) -> 
+		| Attribute ((_, attribute_name), (_, attribute_type), None) -> 
 			fprintf f_out "no_initializer\n%s\n%s\n" attribute_name attribute_type;
-		| Attribute ((_,attribute_name), (_, attribute_type), (Some initialization_expression)) ->
+		| Attribute ((_, attribute_name), (_, attribute_type), (Some initialization_expression)) ->
 			fprintf f_out "initializer\n%s\n%s\n" attribute_name attribute_type;
 			output_exp initialization_expression;
 		| Method _ -> failwith "method unexpected"
@@ -1323,8 +1322,8 @@ let main () = begin
 
         let get_number_of_methods parents_methods_tbl features = 
                 let num = ref 0 in
-                List.iter (fun f ->
-                        match f with
+                List.iter (fun feature ->
+                        match feature with
                         | Method((_,method_name),_,_,_) -> begin
                                 if not(Hashtbl.mem parents_methods_tbl method_name) then
                                         num := !num + 1
@@ -1333,34 +1332,34 @@ let main () = begin
                 (Hashtbl.length parents_methods_tbl) + !num
         in
         let exclude_overriden_methods parents_methods_tbl features class_name =
-                let map = (Hashtbl.copy parents_methods_tbl) in
-                List.iter (fun f ->
-                        match f with
-                        | Method ((_,method_name), formals, method_type, exp) -> begin
-                                if (Hashtbl.mem map method_name) then begin 
-                                        Hashtbl.replace map method_name (formals, class_name, exp)
-                                end
+            let map = (Hashtbl.copy parents_methods_tbl) in
+            List.iter (fun feature ->
+                match feature with
+                | Method ((_,method_name), formals, method_type, exp) -> begin
+                        if (Hashtbl.mem map method_name) then begin 
+                                Hashtbl.replace map method_name (formals, class_name, exp)
                         end
-                ) features ;
+                end
+            ) features ;
                 map
         in
 
         List.iter (fun ((cls_loc, cls_name), inherits, features) ->
-                match inherits with
-                | None -> begin 
-                    vertices := ("Object", cls_name) :: !vertices;
-                    ()
-                end;
-                | Some(inh_loc, inh_name) -> 
-                                vertices := (inh_name, cls_name) :: !vertices;
+            match inherits with
+            | None -> begin 
+                vertices := ("Object", cls_name) :: !vertices;
+                ()
+            end;
+            | Some(inh_loc, inh_name) -> 
+                vertices := (inh_name, cls_name) :: !vertices;
         ) ast ;
         vertices := add_missing_edges !vertices;
         let sorted_classes = topo_sort !vertices in
 
         let output_formal_name formals =
-                List.iter( fun ((_, formal_name),_) ->
-                        fprintf f_out "%s\n" formal_name
-                ) formals                 
+            List.iter( fun ((_, formal_name),_) ->
+                fprintf f_out "%s\n" formal_name
+            ) formals                 
         in
 
         let ordered_method_names = ref [] in
@@ -1369,35 +1368,35 @@ let main () = begin
          * What it does? it itrates over class names (that are in topological order) and saves all
          * methods that it declares and override.*)
         let get_parents_methods_tbl class_names super_class_list =
-                let methods_map = Hashtbl.create 255 in
-                ordered_method_names := [];
-                List.iter (fun class_name ->
-                        let super_class_option = List.find_opt (fun ((_,cname),_,_)-> class_name = cname) super_class_list in
-                        if not (Option.none = super_class_option) then begin
-                                let ((_, super_class_name),_,features) = Option.get super_class_option in
-                                (* add methods to hashtbl starting from the ultimate class that override method *)
-                                List.iter (fun current_method ->
-                                        match current_method with
-                                        | Attribute _ -> ()
-                                        | Method ((_,method_name), formals, method_type, exp) -> begin
-                                                if not(List.mem method_name !ordered_method_names) then
-                                                        ordered_method_names := !ordered_method_names @ [method_name];
-                                                let _, method_type_val = method_type in
-                                                Hashtbl.replace methods_map method_name (formals, class_name, exp);
-                                        end
-                                ) features ;
-                        end;
-                ) class_names ;
-                methods_map
+            let methods_map = Hashtbl.create 255 in
+            ordered_method_names := [];
+            List.iter (fun class_name ->
+                    let super_class_option = List.find_opt (fun ((_,cname),_,_)-> class_name = cname) super_class_list in
+                    if not (Option.none = super_class_option) then begin
+                            let ((_, super_class_name),_,features) = Option.get super_class_option in
+                            (* add methods to hashtbl starting from the ultimate class that override method *)
+                            List.iter (fun current_method ->
+                                    match current_method with
+                                    | Attribute _ -> ()
+                                    | Method ((_,method_name), formals, method_type, exp) -> begin
+                                            if not(List.mem method_name !ordered_method_names) then
+                                                    ordered_method_names := !ordered_method_names @ [method_name];
+                                            let _, method_type_val = method_type in
+                                            Hashtbl.replace methods_map method_name (formals, class_name, exp);
+                                    end
+                            ) features ;
+                    end;
+            ) class_names ;
+            methods_map
         in
 
         (* get sorted list of names from a hastable *)
         let get_ordered_method_names_parent_classes tbl =
-                let parents_method_list = ref (Hashtbl.fold (fun method_name value acc -> 
-                                        method_name :: acc 
-                ) tbl []) in
-                (*List.sort compare !parents_method_list*)
-                !parents_method_list
+            let parents_method_list = ref (Hashtbl.fold (fun method_name value acc -> 
+                                    method_name :: acc 
+            ) tbl []) in
+            (*List.sort compare !parents_method_list*)
+            !parents_method_list
         in
 
         (* Output each method in turn (in order of appearance, with inherited or overridden methods from a superclass coming first; internal methods are defined to appear in ascending alphabetical order) *)
