@@ -393,7 +393,7 @@ end;;
 let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static_type = begin
 	printf "Doing an expression type check\n" ;
 	let static_type = match exp.expression_type with
-	| DynamicDispatch(caller_expression, method_identifier, parameter_expressions) -> begin
+	| DynamicDispatch(caller_expression, method_identifier, argument_expressions) -> begin
 		printf "Doing a Dynamic Dispatch\n" ;
 		(* We're assuming that this should return the Static Type (so the most general class that applies) *)
 		let caller_type: static_type = exp_typecheck o_e m_e caller_expression in
@@ -414,27 +414,28 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static
 			let method_information: static_type list = Hashtbl.find m_e (caller_type_name, method_name) in
 			(* We will return this later as the type for this DynamicDispatch, if we're successful *)
 			let return_type = List.nth method_information ((List.length method_information) - 1) in
-			(* We're now going to see if the parameters we parsed match what the definition expects.
-			For the number of parameters, we have to account for the return type being included in
-			the method information, so we subtract one from that. *)
-			let expected_parameter_count = (List.length method_information) - 1 in
-			let actual_parameter_count = List.length parameter_expressions in
-			if actual_parameter_count <> expected_parameter_count then begin
+			(* The last item of the method information is the require type, so we have to get rid
+			of it. We do so by reversing the list, then removing the first entry, which was the 
+			end of the other list, and then we reverse it again to put it back in the old order.*)
+			let formal_types = List.rev (List.tl (List.rev method_information)) in
+			
+			let expected_argument_count = (List.length formal_types) in
+			let actual_argument_count = List.length argument_expressions in
+			if actual_argument_count <> expected_argument_count then begin
 				printf "ERROR: %s: Type-Check: wrong number of actual arguments (%d vs. %d)\n"
-						caller_expression.line_number actual_parameter_count expected_parameter_count ;
+						caller_expression.line_number actual_argument_count expected_argument_count ;
 				exit 1
 			end ;
 			
 			return_type
 		with Not_found -> begin
-			(* ERROR: 4: Type-Check: unknown method five in dispatch on String *)
 			printf "ERROR: %s: Type-Check: unknown method %s in dispatch on %s\n" 
 					method_identifier_line_number method_name caller_type_name ;
 			exit 1
 		end
 	end
 	(* TODO Figure out if we can use the DynamicDispatch logic for this *)
-	| StaticDispatch(caller_expression, required_caller_type, method_identifier, parameter_expressions) -> begin
+	| StaticDispatch(caller_expression, required_caller_type, method_identifier, argument_expressions) -> begin
 		printf "Doing a Static Dispatch\n" ;
 		(* We're assuming that this should return the Static Type (so the most general class that applies) *)
 		let caller_type: static_type = exp_typecheck o_e m_e caller_expression in
@@ -463,20 +464,21 @@ let rec exp_typecheck(o_e: obj_env) (m_e: method_env) (exp: expression) : static
 			let method_information: static_type list = Hashtbl.find m_e (caller_type_name, method_name) in
 			(* We will return this later as the type for this DynamicDispatch, if we're successful *)
 			let return_type = List.nth method_information ((List.length method_information) - 1) in
-			(* We're now going to see if the parameters we parsed match what the definition expects.
-			For the number of parameters, we have to account for the return type being included in
-			the method information, so we subtract one from that. *)
-			let expected_parameter_count = (List.length method_information) - 1 in
-			let actual_parameter_count = List.length parameter_expressions in
-			if actual_parameter_count <> expected_parameter_count then begin
+			(* The last item of the method information is the require type, so we have to get rid
+			of it. We do so by reversing the list, then removing the first entry, which was the 
+			end of the other list, and then we reverse it again to put it back in the old order.*)
+			let formal_types = List.rev (List.tl (List.rev method_information)) in
+			
+			let expected_argument_count = (List.length formal_types) in
+			let actual_argument_count = List.length argument_expressions in
+			if actual_argument_count <> expected_argument_count then begin
 				printf "ERROR: %s: Type-Check: wrong number of actual arguments (%d vs. %d)\n"
-						caller_expression.line_number actual_parameter_count expected_parameter_count ;
+						caller_expression.line_number actual_argument_count expected_argument_count ;
 				exit 1
 			end ;
 			
 			return_type
 		with Not_found -> begin
-			(* ERROR: 4: Type-Check: unknown method five in dispatch on String *)
 			printf "ERROR: %s: Type-Check: unknown method %s in dispatch on %s\n" 
 					method_identifier_line_number method_name caller_type_name ;
 			exit 1
