@@ -503,19 +503,19 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		(* We're assuming that this should return the Static Type (so the most general class that applies) *)
 		let caller_type: static_type = exp_typecheck o_e m_e c_e caller_expression in
 	 
-		(* This translates our cool_type to a class_type *)
+		(* This translates our cool_type to a static type *)
 		let (required_caller_line_number, required_caller_type_name) = required_caller_type in
-	    let required_caller_class_type = match required_caller_type_name with
+	    let required_caller_static_type = match required_caller_type_name with
 	    | "SELF_TYPE" -> SELF_TYPE(type_to_str c_e)
 	    | _           -> Class(required_caller_type_name)
 	    in
 		(* We need to make sure that the caller type is the same as the required type, based upon the static dispatch, then we use it *)
 		(* This should also catch the illegal self type case as well. *)
-		if required_caller_type_name = "SELF_TYPE" or not (is_subtype caller_type required_caller_class_type) then begin
+		if required_caller_type_name = "SELF_TYPE" or not (is_subtype caller_type required_caller_static_type) then begin
 			printf "ERROR: %s: Type-Check: %s does not conform to %s in static dispatch\n" caller_expression.line_number (type_to_str caller_type) required_caller_type_name ;
 			exit 1
 		end ;
-		let caller_type_name: string = match required_caller_class_type with
+		let caller_type_name: string = match required_caller_static_type with
 		| Class(type_name) -> type_name
 		| SELF_TYPE(_) -> begin
 			(* FIXME Is this correct? *)
@@ -691,6 +691,8 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 					if is_subtype init_exp_type id_type then 
 						Hashtbl.add new_o id_name id_type
 					else begin
+						(* FIXME: Do we need this one? We have another error message exactly like this one in check_own_attributes,
+						so one might not be doing anything. *)
 						printf "ERROR: %s: Type-Check: initializer for %s was %s, did not match declared %s\n" 
 							exp.line_number id_name (type_to_str init_exp_type) init_type;
 						exit 1
@@ -936,14 +938,14 @@ let main () = begin
 	    (formal_name, formal_type)
 	and read_binding () = match read() with
 		| "let_binding_init" -> 
-						let id = read_id() in 
-						let init_type = read_id() in 
-						let exp = read_exp() in 
-						BindingInit(id, init_type, exp)
+		let id = read_id() in 
+		let init_type = read_id() in 
+		let exp = read_exp() in 
+		BindingInit(id, init_type, exp)
 		| "let_binding_no_init" -> 
-						let id = read_id() in 
-						let init_type = read_id() in 
-						BindingNoInit(id, init_type)
+		let id = read_id() in 
+		let init_type = read_id() in 
+		BindingNoInit(id, init_type)
 	and read_case_element () = 
 		let id = read_id() in 
 		let init_type = read_id() in
@@ -1193,8 +1195,8 @@ let main () = begin
 		let own_attributes = get_own_attributes current_class in	
 		List.iter(fun own_attr -> 
 			match own_attr with
-			| Attribute ((attr_loc, attr_name), (dtloc, decl_type), exp) -> 
-				let in_attr = ((attr_loc,attr_name),(dtloc, decl_type), exp) in
+			| Attribute ((attr_loc, attr_name), (attribute_type_line_number, attribute_type_name), exp) -> 
+				let in_attr = ((attr_loc,attr_name), (attribute_type_line_number, attribute_type_name), exp) in
 				(* Check for attribute override errors in super classes *)
 				List.iter(fun super_class ->
 					try
@@ -1211,13 +1213,13 @@ let main () = begin
 					| Some(init_exp) -> 
 						(* x: Int <- 5 + 3 *)
 			  			let init_type = exp_typecheck o_e m_e (Class class_name) init_exp in
-			  			let declared_type = match decl_type with
+			  			let attribute_static_type = match attribute_type_name with
 			  			| "SELF_TYPE" -> SELF_TYPE class_name
-			  			| _ -> Class decl_type
-			  		in 
-			  			if not (is_subtype init_type declared_type) then begin 
+			  			| _           -> Class attribute_type_name
+			  			in 
+			  			if not (is_subtype init_type attribute_static_type) then begin 
 			  				printf "ERROR: %s: Type-Check: initializer for %s was %s, did not match declared %s\n" 
-			  					attr_loc attr_name (type_to_str init_type) decl_type ;
+			  					attr_loc attr_name (type_to_str init_type) (type_to_str attribute_static_type) ;
 							exit 1
 						end;
 
