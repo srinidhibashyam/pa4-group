@@ -237,11 +237,7 @@ let get_own_methods input_class = begin
 		fun feature -> 
 			match feature with
 				| Method ((method_loc, method_name), formals, _, _) -> 
-					(* Check for duplicate method in the same class. *)
-				if (class_name = "Main") && (method_name = "main") && (List.length formals > 0) then begin
-					printf "ERROR: 0: Type-Check: class Main method main with 0 parameters not found\n";
-					exit 1
-				end;
+				(* Check for duplicate method in the same class. *)	
 				if (List.mem method_name !method_names) then begin
 					printf "ERROR: %s: Type-Check: class %s redefines method %s\n" method_loc class_name method_name ;
 					exit 1
@@ -252,11 +248,6 @@ let get_own_methods input_class = begin
 				true
 				| _        -> false
 	) features in
-	(* Check for a missing method main in class Main. *)
-	if (class_name = "Main") && (not (List.mem "main" !method_names)) then begin
-		printf "ERROR: 0: Type-Check: method main not found in class Main\n";
-		exit 1
-	end;	
 	own_methods;
 end ;;
 
@@ -298,7 +289,7 @@ let get_all_attributes input_class ast= begin
 	let supclasses = get_super_classes class_name ast [] in
 	List.iter ( fun parent_class ->
 		let parent_attrs = get_own_attributes parent_class in
-		attributes := !attributes @ parent_attrs
+		attributes := parent_attrs @ !attributes 
 	) supclasses;
 	let own_attrs = get_own_attributes input_class in
 	attributes := !attributes @ own_attrs;
@@ -312,8 +303,8 @@ let add_attribute_types o input_class = begin
 		match own_attr with
 		| Attribute ((attr_loc, attr_name), (decl_loc, decl_type), exp) ->
 			(*add attr_name to O -- add it to current scope *)
-			if decl_type = class_name then 
-				Hashtbl.add o attr_name (SELF_TYPE decl_type)
+			if decl_type = "SELF_TYPE" then 
+				Hashtbl.add o attr_name (SELF_TYPE class_name)
 			else 
 				Hashtbl.add o attr_name (Class decl_type)
 		| Method _ -> ();
@@ -517,8 +508,10 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 	    in
 		(* We need to make sure that the caller type is the same as the required type, based upon the static dispatch, then we use it *)
 		(* This should also catch the illegal self type case as well. *)
+		let (_, method_name) = method_identifier in
 		if required_caller_type_name = "SELF_TYPE" or not (is_subtype caller_type required_caller_class_type) then begin
-			printf "ERROR: %s: Type-Check: %s does not conform to %s in static dispatch\n" caller_expression.line_number (type_to_str caller_type) required_caller_type_name ;
+			printf "ERROR: %s: Type-Check: %s does not conform to %s in static dispatch\n" 
+				caller_expression.line_number (type_to_str caller_type) required_caller_type_name ;
 			exit 1
 		end ;
 		let caller_type_name: string = match required_caller_class_type with
@@ -579,18 +572,19 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		(* printf "Doing a Equality\n" ; *)
 		let eq_class_list = [(Class "Int");(Class "String");(Class "Bool")] in
 		let t1 = exp_typecheck o_e m_e c_e e1 in
-		if not (List.mem t1 eq_class_list) then begin
-			printf "ERROR: %s: Type-Check: comparison on %s not allowed\n" 
-				exp.line_number (type_to_str t1);
-			exit 1	
-		end;
 		let t2 = exp_typecheck o_e m_e c_e e2 in
-		if t1 <> t2 then begin
+		if (List.mem t1 eq_class_list) then
+			if (t1 = t2) then Class "Bool" else begin
+				printf "ERROR: %s: Type-Check: comparison between %s and %s\n" 
+					exp.line_number (type_to_str t1) (type_to_str t2);
+				exit 1	
+			end 
+		else if (List.mem t2 eq_class_list) then begin
 			printf "ERROR: %s: Type-Check: comparison between %s and %s\n" 
 				exp.line_number (type_to_str t1) (type_to_str t2);
-			exit 1	
-		end;
-		Class("Bool")
+			exit 1
+		end 
+		else Class "Bool"
 	| Not(e1) -> 
 		(* printf "Doing a Not\n" ; *)
 		let t1 = exp_typecheck o_e m_e c_e e1 in
@@ -1241,6 +1235,23 @@ let main () = begin
 
 
 		) own_attributes;
+
+
+		(* Check for a missing method main in class Main. *)
+		if (class_name = "Main") then begin
+			try
+				let list_formals = Hashtbl.find m_e ("Main","main") in
+				if (List.length list_formals > 1) then begin
+					printf "ERROR: 0: Type-Check: class Main method main with 0 parameters not found\n";
+					exit 1
+				end;
+				()
+			with Not_found -> begin
+				printf "ERROR: 0: Type-Check: method main not found in class Main\n";
+				exit 1
+			end
+		end;	
+
 	) ast;
 
 	(* DONE WITH ERROR CHECKING*)
