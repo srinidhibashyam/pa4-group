@@ -43,10 +43,11 @@ diff-all:
 	for file in *.cl ; do \
 		echo "---------------------------" ;\
 		f="$$(basename -- $$file)";\
-		echo "comparing results for: $$f" ;\
+		echo "cool compiler: $$f" ;\
 		cool --parse $$f ;\
-		cool --class-map $$f-ast --out ref ;\
+		cool --type $$f-ast --out ref ;\
+		echo "checker-pa4 compiler: $f" ;\
 		./checker-pa4.exe $$f-ast ;\
 		diff -b -B -w ref.cl-type $$f-type ;\
-		rm -f $$f-ast;\
+		mv ref.cl-type $$f-ref.cl-type ;\
 	done \
