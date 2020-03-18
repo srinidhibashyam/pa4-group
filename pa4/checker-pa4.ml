@@ -324,10 +324,7 @@ end;;
 
 (* The child class name is optional and is used to specify a child class name
 that should be used as well for the population of the method environment*)
-let add_method_types meth_env input_class = begin
-	(* Add input_class methods to object environment*)	
-	let own_methods =  get_own_methods input_class in
-	let ((_, class_name), _, _) = input_class in
+let add_method_features meth_env class_name features = begin
 	List.iter (fun own_feat -> 
 		match own_feat with
 		|  Method ((_, m_name), formals, (_, return_type),_) -> 
@@ -345,8 +342,9 @@ let add_method_types meth_env input_class = begin
 			end in
 			Hashtbl.add meth_env (class_name, m_name) (formal_types @ [return_type_class])
 		| Attribute _ -> ();
-	) own_methods;
-end;;
+	) features;
+end
+
 
 (* finds a given method in the class - returns option (feature) *)
 let find_method method_name in_class = begin
@@ -1088,61 +1086,21 @@ let main () = begin
 
 		(* populate method environment *)
 		(* Add self methods *)		
-		add_method_types m_e current_class;
+		add_method_features m_e class_name features;
 		(* Add parent methods to this class *)
 		(List.iter (fun super_class ->
 			let own_methods = get_own_methods super_class in
-			List.iter (
-				fun feature -> 
-					match feature with
-					|  Method ((_, method_name), formals, (_, return_type),_) -> 
-						let formal_types = List.map (fun (_, (_, formal_name)) -> Class formal_name) formals in
-						let return_static_type = match return_type with 
-						| "SELF_TYPE" -> SELF_TYPE class_name
-						| _ -> Class return_type
-					in
-						Hashtbl.add m_e (class_name, method_name) (formal_types @ [return_static_type]) ;
-					| _ -> ()
-			) own_methods
+			add_method_features m_e class_name own_methods
 		) parents )
 
 	) ast;
 
-	List.iter( fun feature -> 
-		match feature with
-			|  Method ((_ , method_name), formals, (_ , return_type),_) -> 
-				let formal_types = List.map (fun (_ , (_ , formal_name)) -> Class formal_name) formals in
-				let return_static_type = match return_type with 
-						| "SELF_TYPE" -> SELF_TYPE "String"
-						| _ -> Class return_type
-					in
-				Hashtbl.add m_e ("String", method_name) (formal_types @ [return_static_type]) ;
-			| _ -> ()
-	) string_features;
-
-	List.iter( fun feature -> 
-		match feature with
-			|  Method ((_ , method_name), formals, (_ , return_type),_) -> 
-				let formal_types = List.map (fun (_ , (_ , formal_name)) -> Class formal_name) formals in
-				let return_static_type = match return_type with 
-						| "SELF_TYPE" -> SELF_TYPE "Object"
-						| _ -> Class return_type
-					in
-				Hashtbl.add m_e ("Object", method_name) (formal_types @ [return_static_type]) ;
-			| _ -> ()
-	) obj_features;
-
-	List.iter( fun feature -> 
-		match feature with
-			|  Method ((_ , method_name), formals, (_ , return_type),_) -> 
-				let formal_types = List.map (fun (_ , (_ , formal_name)) -> Class formal_name) formals in
-				let return_static_type = match return_type with 
-						| "SELF_TYPE" -> SELF_TYPE "IO"
-						| _ -> Class return_type
-					in
-				Hashtbl.add m_e ("IO", method_name) (formal_types @ [return_static_type]) ;
-			| _ -> ()
-	) io_features;
+	(* populate method environment for base classes *)
+	add_method_features m_e "Object" obj_features;
+	add_method_features m_e "String" (string_features @ obj_features);
+	add_method_features m_e "IO" (io_features @ obj_features);
+	add_method_features m_e "Int" obj_features;
+	add_method_features m_e "Bool" obj_features;
 
 	List.iter(
 		fun class_name -> 
