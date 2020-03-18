@@ -499,7 +499,10 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		in 
 		(* This performs the Dispatch part of the type checking and returns the static type
 		returned by the dispatched method. *)
-		dispatch_type_check o_e m_e c_e caller_type_name caller_expression.line_number method_identifier argument_expressions
+		let static_return_type = dispatch_type_check o_e m_e c_e caller_type_name caller_expression.line_number method_identifier argument_expressions in
+		match static_return_type with
+		| Class(c) -> static_return_type
+		| SELF_TYPE(c) -> caller_type
 	end
 	| StaticDispatch(caller_expression, required_caller_type, method_identifier, argument_expressions) -> begin
 		(* printf "Doing a Static Dispatch\n" ; *)
