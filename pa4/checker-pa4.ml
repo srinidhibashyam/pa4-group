@@ -76,6 +76,26 @@ let rec lowest_upper_bound type_1 type_2 =
 type obj_env = (string, static_type) Hashtbl.t
 let empty_obj_env (): obj_env = Hashtbl.create 255
 
+let option_get value_option = 
+	match value_option with
+		| Some(value) -> value
+		| _ -> failwith "value had not been found"
+;;
+
+let hashtbl_find_opt map key = 
+        try 
+                Some (Hashtbl.find map key);
+        with
+        | _ -> None;
+;;
+
+let list_find_opt precondition lst = 
+        try 
+                Some(List.find precondition lst)
+        with
+        | _ -> None
+;;
+
 
 type class_method = string * string
 (* Maps a (class_name, method_name) -> [..List of formal types, Method return type] *)
@@ -140,10 +160,10 @@ exception MethodRedefineError of string;;
 exception AttributeRedefineError of string;;
 
 (* static expressions for built-in methods of Object, Int, String, IO classes *)
-let int_static_type = (Option.some (Class "Int"));;
-let self_type_static_type = (Option.some (Class "SELF_TYPE"));;
-let str_static_type = (Option.some (Class "String"));;
-let obj_static_type = (Option.some (Class "Object"));;
+let int_static_type = (Some (Class "Int"));;
+let self_type_static_type = (Some (Class "SELF_TYPE"));;
+let str_static_type = (Some (Class "String"));;
+let obj_static_type = (Some (Class "Object"));;
 let obj_abort_exp_body = {line_number= "0"; expression_type=Internal(("0", "Object"), "Object", "abort") ; static_type=obj_static_type;}
 let obj_type_name_exp_body = {line_number= "0"; expression_type=Internal(("0", "String"), "Object", "type_name") ; static_type=str_static_type;}
 let obj_copy_exp_body = {line_number= "0"; expression_type=Internal(("0", "SELF_TYPE"), "Object", "copy") ; static_type=self_type_static_type;}
@@ -786,15 +806,15 @@ let topo_sort vertices = begin
 
     (* counting the number of incoming edges *)
     List.iter (fun (v, d) -> 
-            let cur = Hashtbl.find_opt deg v in
+            let cur = hashtbl_find_opt deg v in
             match cur with 
             | None -> Hashtbl.replace deg v 1
-            | degree -> Hashtbl.replace deg v (Option.get degree + 1);
+            | degree -> Hashtbl.replace deg v (option_get degree + 1);
     ) vertices ;
 
     (* adding missing vertices. Init them with 0 degree *)
     List.iter (fun (v, d) -> 
-            let missing_vert = Hashtbl.find_opt deg d in
+            let missing_vert = hashtbl_find_opt deg d in
             match missing_vert with 
             | None -> Hashtbl.replace deg d 0
             | _ -> ();
@@ -820,7 +840,7 @@ let topo_sort vertices = begin
             result := hd :: !result;
             List.iter (fun (in_, out) ->
                     if hd = out then begin
-                            let d = Option.get (Hashtbl.find_opt deg in_) in
+                            let d = option_get (hashtbl_find_opt deg in_) in
                             Hashtbl.replace deg in_ (d-1);
                             if (d-1) = 0 then begin
                                     topo := in_ :: !topo
@@ -1501,9 +1521,9 @@ let main () = begin
             let methods_map = Hashtbl.create 255 in
             ordered_method_names := [];
             List.iter (fun class_name ->
-                    let super_class_option = List.find_opt (fun ((_,cname),_,_)-> class_name = cname) super_class_list in
-                    if not (Option.none = super_class_option) then begin
-                            let ((_, super_class_name),_,features) = Option.get super_class_option in
+                    let super_class_option = list_find_opt (fun ((_,cname),_,_)-> class_name = cname) super_class_list in
+                    if not (None = super_class_option) then begin
+                            let ((_, super_class_name),_,features) = option_get super_class_option in
                             (* add methods to hashtbl starting from the ultimate class that override method *)
                             List.iter (fun current_method ->
                                     match current_method with
@@ -1532,9 +1552,9 @@ let main () = begin
         (* Output each method in turn (in order of appearance, with inherited or overridden methods from a superclass coming first; internal methods are defined to appear in ascending alphabetical order) *)
         let output_parent_methods parents_methods_tbl  =
                 List.iter (fun method_name ->
-                        let method_info_option = (Hashtbl.find_opt parents_methods_tbl method_name) in
-                        if not (Option.none = method_info_option) then begin
-                                let formals, owner_class, exp = Option.get method_info_option in
+                        let method_info_option = (hashtbl_find_opt parents_methods_tbl method_name) in
+                        if not (None = method_info_option) then begin
+                                let formals, owner_class, exp = option_get method_info_option in
                                 fprintf f_out "%s\n" method_name;
                                 fprintf f_out "%d\n" (List.length formals);
                                 output_formal_name formals;
@@ -1607,7 +1627,7 @@ let main () = begin
         let output_feature feature = 
                 match feature with 
 		| Attribute ((attr_loc, attr_name), (decl_loc, decl_type), exp) ->
-                                if (exp =  Option.none)then begin 
+                                if (exp =  None)then begin 
                                         fprintf f_out "attribute_no_init\n" ;
                                         output_identifier (attr_loc, attr_name);
                                         output_identifier (decl_loc, decl_type)
@@ -1615,7 +1635,7 @@ let main () = begin
                                         fprintf f_out "attribute_init\n" ;
                                         output_identifier (attr_loc, attr_name);
                                         output_identifier (decl_loc, decl_type);
-                                        output_exp (Option.get exp)
+                                        output_exp (option_get exp)
                                 end
                 | Method(method_name, args, type_name, exp) ->
                                 fprintf f_out "method\n" ;
