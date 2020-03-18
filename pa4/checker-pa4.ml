@@ -231,8 +231,12 @@ let get_own_methods input_class = begin
 	let own_methods = List.filter (
 		fun feature -> 
 			match feature with
-				| Method ((method_loc, method_name), _, _, _) -> 
+				| Method ((method_loc, method_name), formals, _, _) -> 
 					(* Check for duplicate method in the same class. *)
+				if (class_name = "Main") && (method_name = "main") && (List.length formals > 0) then begin
+					printf "ERROR: 0: Type-Check: class Main method main with 0 parameters not found\n";
+					exit 1
+				end;
 				if (List.mem method_name !method_names) then begin
 					printf "ERROR: %s: Type-Check: class %s redefines method %s\n" method_loc class_name method_name ;
 					exit 1
@@ -478,10 +482,10 @@ end
 * We implement type check procedure by reading in rules in the CRM
 *)
 and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: expression) : static_type = begin
-	printf "Doing an expression type check\n" ;
+	(* printf "Doing an expression type check\n" ; *)
 	let static_type = match exp.expression_type with
 	| DynamicDispatch(caller_expression, method_identifier, argument_expressions) -> begin
-		printf "Doing a Dynamic Dispatch\n" ;
+		(* printf "Doing a Dynamic Dispatch\n" ; *)
 		(* We're assuming that this should return the Static Type (so the most general class that applies) *)
 		let caller_type: static_type = exp_typecheck o_e m_e c_e caller_expression in
 		(* We now check if the given method belongs to this class type. This first requires that we
@@ -499,7 +503,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		dispatch_type_check o_e m_e c_e caller_type_name caller_expression.line_number method_identifier argument_expressions
 	end
 	| StaticDispatch(caller_expression, required_caller_type, method_identifier, argument_expressions) -> begin
-		printf "Doing a Static Dispatch\n" ;
+		(* printf "Doing a Static Dispatch\n" ; *)
 		(* We're assuming that this should return the Static Type (so the most general class that applies) *)
 		let caller_type: static_type = exp_typecheck o_e m_e c_e caller_expression in
 	 
@@ -528,7 +532,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		dispatch_type_check o_e m_e c_e required_caller_type_name caller_expression.line_number method_identifier argument_expressions
 	end
 	| SelfDispatch(method_identifier, argument_expressions) -> begin
-		printf "Doing a Self Dispatch\n" ;
+		(* printf "Doing a Self Dispatch\n" ; *)
 		(* This performs the Dispatch part of the type checking and returns the static type
 		returned by the dispatched method. *)
 		let class_name = type_to_str c_e in
@@ -543,19 +547,19 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 			| _ -> Class id_name
 		)
 	| Integer(i) -> begin
-		printf "Doing a Integer\n" ;
+		(* printf "Doing a Integer\n" ; *)
 		Class("Int")
 	end
 	| String(s) -> begin
-		printf "Doing a String\n" ;
+		(* printf "Doing a String\n" ; *)
 		Class("String")
 	end
 	| True | False -> begin
-		printf "Doing a Boolean\n" ;
+		(* printf "Doing a Boolean\n" ; *)
 		Class("Bool")
 	end
 	| Plus(e1, e2) | Minus(e1, e2) | Times(e1, e2) | Divide(e1, e2) -> 
-		printf "Doing a Math Symbol\n" ;
+		(* printf "Doing a Math Symbol\n" ; *)
 		let t1 = exp_typecheck o_e m_e c_e e1 in
 		if t1 <> (Class "Int") then begin
 			printf "ERROR: %s: Type-Check: arithmetic on Int %s instead of Ints\n" 
@@ -570,7 +574,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		end;
 		Class("Int")
 	| Equals(e1, e2) | LessThan(e1, e2)  | LessThanOrEq(e1, e2)-> 
-		printf "Doing a Equality\n" ;
+		(* printf "Doing a Equality\n" ; *)
 		let eq_class_list = [(Class "Int");(Class "String");(Class "Bool")] in
 		let t1 = exp_typecheck o_e m_e c_e e1 in
 		if not (List.mem t1 eq_class_list) then begin
@@ -586,7 +590,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		end;
 		Class("Bool")
 	| Not(e1) -> 
-		printf "Doing a Not\n" ;
+		(* printf "Doing a Not\n" ; *)
 		let t1 = exp_typecheck o_e m_e c_e e1 in
 		if t1 <> (Class "Bool") then begin
 			printf "ERROR: %s: Type-Check: not applied to type %s instead of Boolean \n" 
@@ -595,7 +599,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		end;
 		Class("Bool")
 	| Negate(e1) -> 
-		printf "Doing a Negate\n" ;
+		(* printf "Doing a Negate\n" ; *)
 		let t1 = exp_typecheck o_e m_e c_e e1 in
 		if t1 <> (Class "Int") then begin
 			printf "ERROR: %s: Type-Check: negate applied to type %s instead of Int \n" 
@@ -604,21 +608,21 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		end;
 		Class("Int")
 	| IsVoid(e1) -> 
-		printf "Doing a Isvoid\n" ;
+		(* printf "Doing a Isvoid\n" ; *)
 		let t1 = exp_typecheck o_e m_e c_e e1 in
 		Class("Bool")
 	| Identifier((vloc, vname)) ->
-		printf "Doing a Identifier\n" ;
+		(* printf "Doing a Identifier\n" ; *)
 		if vname = "self" then
 			SELF_TYPE(type_to_str c_e)
 		else if Hashtbl.mem o_e vname then
 			Hashtbl.find o_e vname
 	 	else begin
-	 		printf "ERROR: %s: Type-Check: Undeclared variable %s\n" vloc vname;
+	 		printf "ERROR: %s: Type-Check: unbound identifier %s\n" vloc vname;
 			exit 1
 	 	end
 	| Assign((id_location, id_name), exp) ->
-		printf "Doing a Assign\n" ;
+		(* printf "Doing a Assign\n" ; *)
 		if id_name = "self" then begin
 			printf "ERROR: %s: Type-Check: Cannot assign to self variable\n"  id_location;
             exit 1
@@ -629,7 +633,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
             if is_subtype te tid then
                 te
             else begin
-                printf "ERROR: %s: Type-Check: Assignment does not conform: %s has type %s\n"  id_location id_name (type_to_str tid);
+                printf "ERROR: %s: Type-Check: %s does not conform to %s in assignment\n"  id_location (type_to_str te) (type_to_str tid);
                 exit 1
         	end
         else begin
@@ -637,7 +641,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
             exit 1
         end
 	| If(predicate, then_exp, else_exp) ->
-		printf "Doing a If\n" ;
+		(* printf "Doing a If\n" ; *)
 		let predicate_type = exp_typecheck o_e m_e c_e predicate in
     	if predicate_type <> (Class "Bool") then begin
     		printf "ERROR: %s: Type-Check: predicate has type %s instead of Bool\n" exp.line_number (type_to_str predicate_type);
@@ -648,14 +652,14 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
     		let else_exp_type = exp_typecheck o_e m_e c_e else_exp in
     			lowest_upper_bound then_exp_type else_exp_type
     | Block(exps) ->
-    	printf "Doing a Block\n" ;
+    	(* printf "Doing a Block\n" ; *)
 		let list_type = ref (Class "Object") in 
     	let check_type = List.iter(fun e -> 
         		list_type := exp_typecheck o_e m_e c_e e
     	) exps in 
     		!list_type
     | Let(bindings, exp) ->
-    	printf "Doing a Let\n" ;
+    	(* printf "Doing a Let\n" ; *)
 		let new_o = Hashtbl.copy o_e in  
 		List.iter(fun binding -> 
 			match binding with 
@@ -758,7 +762,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
     						case_type := lowest_upper_bound !case_type current_type
     				end
     				else begin
-    					printf "ERROR: %s: Type-Check: unknown type %s\n" exp.line_number type_name;
+    					printf "ERROR: %s: Type-Check: unknown type %s\n" type_location type_name;
     					exit 1
     				end;
 
@@ -1149,6 +1153,16 @@ let main () = begin
 					if (List.mem formal_name !formal_names) then begin
 						printf "ERROR: %s: Type-Check: class %s has method %s with duplicate formal parameter named %s\n" 
 							method_line_number class_name method_name formal_name;
+						exit 1
+					end;
+					if (formal_name = "self") then begin
+						printf "ERROR: %s: Type-Check: class %s has method %s with formal parameter named self\n" 
+							method_line_number class_name method_name;
+						exit 1
+					end;
+					if (formal_type = "SELF_TYPE") then begin
+						printf "ERROR: %s: Type-Check: class %s has method %s with formal parameter of unknown type SELF_TYPE\n"
+							method_line_number class_name method_name;
 						exit 1
 					end;
 					(* Collect all formal names *)
