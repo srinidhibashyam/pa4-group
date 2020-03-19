@@ -238,7 +238,7 @@ let rec get_super_classes input_class_name ast_list visited = begin
 					let class_object = ((cloc, "Object"), None, obj_features) in
 					[class_object]; (* return Object*)
 				| _ ->
-					printf "ERROR: %s: Type-Check: Class %s Inherits from undefined class %s\n" 
+					printf "ERROR: %s: Type-Check: Class %s Inherits from unknown class %s\n" 
 						iloc input_class_name iname;
 					exit 1
 	with
