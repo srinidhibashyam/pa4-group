@@ -566,7 +566,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		(* printf "Doing a Math Symbol\n" ; *)
 		let t1 = exp_typecheck o_e m_e c_e e1 in
 		if t1 <> (Class "Int") then begin
-			printf "ERROR: %s: Type-Check: arithmetic on Int %s instead of Ints\n" 
+			printf "ERROR: %s: Type-Check: arithmetic on %s Int instead of Ints\n" 
 				exp.line_number (type_to_str t1);
 			exit 1	
 		end;
