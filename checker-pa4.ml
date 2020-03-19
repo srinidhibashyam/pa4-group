@@ -1040,7 +1040,7 @@ let main () = begin
 							let e = read_exp() in
 							let elements = read_list read_case_element in 
 							Case(e, elements)
-		| x -> (*TODO: other exp *)
+		| x ->
 			failwith ("cannot happen:expr " ^x)	
 		in	
 		{
@@ -1050,7 +1050,6 @@ let main () = begin
 		}
 
 	in
-
 
 	let ast = read_cool_program () in
 	close_in input_file; 
@@ -1100,11 +1099,11 @@ let main () = begin
 	List.iter(
 		fun class_name -> 
 		Hashtbl.add class_hashtbl class_name true
-	)all_classes;
+	) all_classes;
 	List.iter(
 		fun class_name -> 
 		Hashtbl.add class_hashtbl class_name true
-	)["Bool"; "Object"; "Int"; "IO"; "String"; "SELF_TYPE"];
+	) ["Bool"; "Object"; "Int"; "IO"; "String"; "SELF_TYPE"];
 	(* Look for errors in Class Declarations*)	
 	let declared_classes = ref [] in
 	List.iter(fun current_class ->
