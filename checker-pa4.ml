@@ -1,4 +1,4 @@
-(* PA-4 Semantic Anlyzer checkpoint *)
+(* PA-4 Semantic Analyser *)
 open Printf 
 
 (* create a static type for Cool expression *)
@@ -6,10 +6,9 @@ type static_type =
 	| Class of string (*"Int" or "Object" *)
 	| SELF_TYPE of string (*SELF_TYPE_c *)
 
-(* Procedure to print these *)
 let type_to_str t = match t with
 	| Class(x) -> x (*"Int" or "Object" *)
-	| SELF_TYPE(c) -> "SELF_TYPE(" ^ c ^ ")"  (*SELF_TYPE_c *)
+	| SELF_TYPE(c) -> "SELF_TYPE(" ^ c ^ ")"  (*SELF_TYPE(c) *)
 
 (* Operations to be performed on these types *)
 (* <= --- subtyping (Liskov Substitution Principle)*)
@@ -35,7 +34,6 @@ let rec is_subtype t1 t2 =    (*checking if t1 is subtype of t2*)
 		else false
 	| SELF_TYPE(c), Class(x) -> is_subtype (Class c) (Class x)
 	| Class(x), SELF_TYPE(c) -> false
-	| _, _ -> false   
 
 exception LowerBoundFound of string;;
 
@@ -179,21 +177,21 @@ let str_substr_exp_body = {line_number = "0"; expression_type=Internal(("0", "St
 let int_features = [];;
 let bool_features = [];;
 let io_features = [ 
-				Method(("0","in_int"), [], ("0","Int"), in_int_exp_body);
-				Method(("0","in_string"), [], ("0","String"), in_str_exp_body);
-				Method(("0","out_int"), [(("0","x"),("0","Int"))], ("0","SELF_TYPE"), out_int_exp_body);
-				Method(("0","out_string"), [(("0","x"),("0","String"))], ("0","SELF_TYPE"), out_str_exp_body);
-				];;
+	Method(("0","in_int"), [], ("0","Int"), in_int_exp_body);
+	Method(("0","in_string"), [], ("0","String"), in_str_exp_body);
+	Method(("0","out_int"), [(("0","x"),("0","Int"))], ("0","SELF_TYPE"), out_int_exp_body);
+	Method(("0","out_string"), [(("0","x"),("0","String"))], ("0","SELF_TYPE"), out_str_exp_body);
+];;
 let obj_features = [ 
-				Method(("0","abort"), [], ("0","Object"), obj_abort_exp_body);
-				Method(("0","copy"), [], ("0","SELF_TYPE"), obj_copy_exp_body);
-				Method(("0","type_name"), [], ("0","String"), obj_type_name_exp_body);
-				];;	
+	Method(("0","abort"), [], ("0","Object"), obj_abort_exp_body);
+	Method(("0","copy"), [], ("0","SELF_TYPE"), obj_copy_exp_body);
+	Method(("0","type_name"), [], ("0","String"), obj_type_name_exp_body);
+];;	
 let string_features = [ 
-				Method(("0","concat"), [(("0","s"),("0","String"))], ("0","String"), str_concat_exp_body);
-				Method(("0","length"), [], ("0","Int"), str_length_exp_body);
-				Method(("0","substr"), [(("0","i"),("0","Int"));(("0","l"),("0","Int"))], ("0","String"), str_substr_exp_body);
-				];;	
+	Method(("0","concat"), [(("0","s"),("0","String"))], ("0","String"), str_concat_exp_body);
+	Method(("0","length"), [], ("0","Int"), str_length_exp_body);
+	Method(("0","substr"), [(("0","i"),("0","Int"));(("0","l"),("0","Int"))], ("0","String"), str_substr_exp_body);
+];;	
 
 (* Lists all parent classes of a given class in given ast list (including IO and Object) *)
 let rec get_super_classes input_class_name ast_list visited = begin
@@ -240,7 +238,7 @@ let rec get_super_classes input_class_name ast_list visited = begin
 					let class_object = ((cloc, "Object"), None, obj_features) in
 					[class_object]; (* return Object*)
 				| _ ->
-					printf "ERROR: %s: Type-Check: Class %s Inherits from undefined class %s\n" 
+					printf "ERROR: %s: Type-Check: Class %s Inherits from unknown class %s\n" 
 						iloc input_class_name iname;
 					exit 1
 	with
@@ -466,7 +464,7 @@ let rec dispatch_type_check o_e m_e c_e caller_type_name caller_line_number meth
 		let expected_parameter_count = List.length argument_expressions in
 		if actual_argument_count <> expected_parameter_count then begin
 			printf "ERROR: %s: Type-Check: wrong number of actual arguments (%d vs. %d)\n"
-					caller_line_number actual_argument_count expected_parameter_count ;
+					caller_line_number expected_parameter_count actual_argument_count ;
 			exit 1
 		end ;
 
@@ -528,20 +526,11 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 	    in
 		(* We need to make sure that the caller type is the same as the required type, based upon the static dispatch, then we use it *)
 		(* This should also catch the illegal self type case as well. *)
-		let (_, method_name) = method_identifier in
-		if required_caller_type_name = "SELF_TYPE" or not (is_subtype caller_type required_caller_class_type) then begin
+		if required_caller_type_name = "SELF_TYPE" || not (is_subtype caller_type required_caller_class_type) then begin
 			printf "ERROR: %s: Type-Check: %s does not conform to %s in static dispatch\n" 
 				caller_expression.line_number (type_to_str caller_type) required_caller_type_name ;
 			exit 1
 		end ;
-		let caller_type_name: string = match required_caller_class_type with
-		| Class(type_name) -> type_name
-		| SELF_TYPE(_) -> begin
-			(* FIXME Is this correct? *)
-			printf "Illegal: Self type can not be invoked as the caller for a static dispatch\n" ;
-			exit 1
-		end 
-		in 
 		(* This performs the Dispatch part of the type checking and returns the static type
 		returned by the dispatched method. *)
 		dispatch_type_check o_e m_e c_e required_caller_type_name caller_expression.line_number method_identifier argument_expressions
@@ -577,7 +566,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		(* printf "Doing a Math Symbol\n" ; *)
 		let t1 = exp_typecheck o_e m_e c_e e1 in
 		if t1 <> (Class "Int") then begin
-			printf "ERROR: %s: Type-Check: arithmetic on Int %s instead of Ints\n" 
+			printf "ERROR: %s: Type-Check: arithmetic on %s Int instead of Ints\n" 
 				exp.line_number (type_to_str t1);
 			exit 1	
 		end;
@@ -605,11 +594,11 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 			exit 1
 		end 
 		else Class "Bool"
-	| Not(e1) -> 
+	| Not(expression) -> 
 		(* printf "Doing a Not\n" ; *)
-		let t1 = exp_typecheck o_e m_e c_e e1 in
+		let t1 = exp_typecheck o_e m_e c_e expression in
 		if t1 <> (Class "Bool") then begin
-			printf "ERROR: %s: Type-Check: not applied to type %s instead of Boolean \n" 
+			printf "ERROR: %s: Type-Check: not applied to type %s instead of Bool \n" 
 				exp.line_number (type_to_str t1);
 			exit 1
 		end;
@@ -623,10 +612,6 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 			exit 1
 		end;
 		Class("Int")
-	| IsVoid(e1) -> 
-		(* printf "Doing a Isvoid\n" ; *)
-		let t1 = exp_typecheck o_e m_e c_e e1 in
-		Class("Bool")
 	| Identifier((vloc, vname)) ->
 		(* printf "Doing a Identifier\n" ; *)
 		if vname = "self" then
@@ -640,7 +625,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 	| Assign((id_location, id_name), assign_exp) ->
 		(* printf "Doing a Assign\n" ; *)
 		if id_name = "self" then begin
-			printf "ERROR: %s: Type-Check: Cannot assign to self variable\n"  id_location;
+			printf "ERROR: %s: Type-Check: Cannot assign to self\n"  id_location;
             exit 1
 		end
 		else if Hashtbl.mem o_e id_name then 
@@ -656,11 +641,11 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
             printf "ERROR: %s: Type-check: undeclared variable %s\n"  id_location id_name;
             exit 1
         end
-	| If(predicate, then_exp, else_exp) ->
+	| If(conditional, then_exp, else_exp) ->
 		(* printf "Doing a If\n" ; *)
-		let predicate_type = exp_typecheck o_e m_e c_e predicate in
-    	if predicate_type <> (Class "Bool") then begin
-    		printf "ERROR: %s: Type-Check: predicate has type %s instead of Bool\n" exp.line_number (type_to_str predicate_type);
+		let conditional_type = exp_typecheck o_e m_e c_e conditional in
+    	if conditional_type <> (Class "Bool") then begin
+    		printf "ERROR: %s: Type-Check: conditional has type %s instead of Bool\n" exp.line_number (type_to_str conditional_type);
     		exit 1
     	end
     	else
@@ -670,9 +655,9 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
     | Block(exps) ->
     	(* printf "Doing a Block\n" ; *)
 		let list_type = ref (Class "Object") in 
-    	let check_type = List.iter(fun e -> 
+    	(List.iter(fun e -> 
         		list_type := exp_typecheck o_e m_e c_e e
-    	) exps in 
+    	) exps) ; 
     		!list_type
     | Let(bindings, body_exp) ->
     	(* printf "Doing a Let\n" ; *)
@@ -733,19 +718,12 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 			exp_typecheck o_e m_e c_e exp2;
 			Class("Object")
 		end
-	| IsVoid(body_exp) ->
-		exp_typecheck o_e m_e c_e body_exp;
+	| IsVoid(exp) ->
+		(* printf "Doing a Isvoid\n" ; *)
+		exp_typecheck o_e m_e c_e exp;
 		Class("Bool")
-	| Not(body_exp) -> 
-		let t = exp_typecheck o_e m_e c_e body_exp in 
-		if t <> Class("Bool") then begin 
-			printf "ERROR: %s: Type-Check: Not statement's expression expects type Bool, not type %s\n" exp.line_number (type_to_str t);
-    		exit 1
-    	end
-    	else 
-    		Class("Bool")
-    | Case(called_exp, elements) ->
-    	let t0 = exp_typecheck o_e m_e c_e called_exp in 
+    | Case(exp, elements) ->
+    	exp_typecheck o_e m_e c_e exp ; 
     	let bound_class = Hashtbl.create 255 in
     	let case_type = ref (Class "Object") in
     	let flag = ref false in
@@ -1062,7 +1040,7 @@ let main () = begin
 							let e = read_exp() in
 							let elements = read_list read_case_element in 
 							Case(e, elements)
-		| x -> (*TODO: other exp *)
+		| x ->
 			failwith ("cannot happen:expr " ^x)	
 		in	
 		{
@@ -1072,7 +1050,6 @@ let main () = begin
 		}
 
 	in
-
 
 	let ast = read_cool_program () in
 	close_in input_file; 
@@ -1122,11 +1099,11 @@ let main () = begin
 	List.iter(
 		fun class_name -> 
 		Hashtbl.add class_hashtbl class_name true
-	)all_classes;
+	) all_classes;
 	List.iter(
 		fun class_name -> 
 		Hashtbl.add class_hashtbl class_name true
-	)["Bool"; "Object"; "Int"; "IO"; "String"; "SELF_TYPE"];
+	) ["Bool"; "Object"; "Int"; "IO"; "String"; "SELF_TYPE"];
 	(* Look for errors in Class Declarations*)	
 	let declared_classes = ref [] in
 	List.iter(fun current_class ->
@@ -1267,7 +1244,7 @@ let main () = begin
 				end;
 				()
 			with Not_found -> begin
-				printf "ERROR: 0: Type-Check: method main not found in class Main\n";
+				printf "ERROR: 0: Type-Check: class Main method main not found\n";
 				exit 1
 			end
 		end;	
@@ -1428,7 +1405,6 @@ let main () = begin
 			try
 				let curr_class = List.find(fun ((_,class_name_candidate),_,_)
 						 -> class_name_candidate = class_name) ast in
-				let  (_, inherits, features) = curr_class in
 				get_all_attributes curr_class ast
 			with
 			| _ -> (*bool/int/object*) []
@@ -1531,22 +1507,12 @@ let main () = begin
                                     | Method ((_,method_name), formals, method_type, exp) -> begin
                                             if not(List.mem method_name !ordered_method_names) then
                                                     ordered_method_names := !ordered_method_names @ [method_name];
-                                            let _, method_type_val = method_type in
                                             Hashtbl.replace methods_map method_name (formals, class_name, exp);
                                     end
                             ) features ;
                     end;
             ) class_names ;
             methods_map
-        in
-
-        (* get sorted list of names from a hastable *)
-        let get_ordered_method_names_parent_classes tbl =
-            let parents_method_list = ref (Hashtbl.fold (fun method_name value acc -> 
-                                    method_name :: acc 
-            ) tbl []) in
-            (*List.sort compare !parents_method_list*)
-            !parents_method_list
         in
 
         (* Output each method in turn (in order of appearance, with inherited or overridden methods from a superclass coming first; internal methods are defined to appear in ascending alphabetical order) *)
@@ -1593,7 +1559,6 @@ let main () = begin
                 let parents_methods_tbl = exclude_overriden_methods parents_methods_tbl features class_name in
                 fprintf f_out "%d\n" (get_number_of_methods parents_methods_tbl features);
                 output_parent_methods parents_methods_tbl;
-                let sorted_method_list = get_ordered_method_names_parent_classes parents_methods_tbl in
                 output_own_methods class_name features parents_methods_tbl;
                         
         ) all_classes ;
