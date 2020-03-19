@@ -1179,6 +1179,11 @@ let main () = begin
 
 				let init_type = exp_typecheck new_o_env m_e (Class class_name) exp in
 	  			let (return_loc, return_type) = ret_type in
+	  			if not ((Hashtbl.mem class_hashtbl return_type) || (return_type = "SELF_TYPE")) then begin
+	  				printf "ERROR: %s: Type-Check: class %s has method %s with unknown return type %s\n" 
+	  					method_line_number class_name method_name return_type;
+					exit 1
+	  			end;
 	  			let return_static_type = match return_type with
 	  			| "SELF_TYPE" -> SELF_TYPE class_name
 	  			| _ -> Class return_type
