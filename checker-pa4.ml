@@ -1244,7 +1244,7 @@ let main () = begin
 				end;
 				()
 			with Not_found -> begin
-				printf "ERROR: 0: Type-Check: method main not found in class Main\n";
+				printf "ERROR: 0: Type-Check: class Main method main not found\n";
 				exit 1
 			end
 		end;	
