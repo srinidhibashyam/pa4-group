@@ -1,7 +1,5 @@
 Our program currently passes all of the positive and negative test cases. 
 
-Passing:
-=================
 arith
 forwardinherits
 letinit
@@ -91,4 +89,3 @@ letbadinit
 redefinedobject
 
 Failing:
-=================
