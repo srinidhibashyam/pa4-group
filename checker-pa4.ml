@@ -598,7 +598,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		(* printf "Doing a Not\n" ; *)
 		let t1 = exp_typecheck o_e m_e c_e expression in
 		if t1 <> (Class "Bool") then begin
-			printf "ERROR: %s: Type-Check: not applied to type %s instead of Boolean \n" 
+			printf "ERROR: %s: Type-Check: not applied to type %s instead of Bool \n" 
 				exp.line_number (type_to_str t1);
 			exit 1
 		end;
