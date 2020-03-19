@@ -464,7 +464,7 @@ let rec dispatch_type_check o_e m_e c_e caller_type_name caller_line_number meth
 		let expected_parameter_count = List.length argument_expressions in
 		if actual_argument_count <> expected_parameter_count then begin
 			printf "ERROR: %s: Type-Check: wrong number of actual arguments (%d vs. %d)\n"
-					caller_line_number actual_argument_count expected_parameter_count ;
+					caller_line_number expected_parameter_count actual_argument_count ;
 			exit 1
 		end ;
 
