@@ -30,3 +30,11 @@ After we populate a class's attributes and have ensured that the declaration of 
 After we complete all of the type checking, we follow the same general strategy used for outputting tokens in PA2 and PA3 to output our completed type-checked AST. 
 
 We believe that our Semantic Analyzer is currently feature-complete and should fulfill all of the functional requirements, based upon our testing with our test cases and the instructor provided ones. The only remaining work that we would do for it involves some cleanup and optimaization.
+
+Test Case Justification:
+
+<Cuong goes here>
+
+Extra Considerations:
+
+We did decide to use slightly different error messages for errors in initializations. We decided that providing information about the variable name and some extra type information would be useful for the programmer when attempting to debug the error. We also did similar things for some of the other error messages, tending to provide more rather than less information.
