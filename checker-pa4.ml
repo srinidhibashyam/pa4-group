@@ -622,7 +622,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 	 		printf "ERROR: %s: Type-Check: unbound identifier %s\n" vloc vname;
 			exit 1
 	 	end
-	| Assign((id_location, id_name), exp) ->
+	| Assign((id_location, id_name), assign_exp) ->
 		(* printf "Doing a Assign\n" ; *)
 		if id_name = "self" then begin
 			printf "ERROR: %s: Type-Check: Cannot assign to self variable\n"  id_location;
@@ -630,7 +630,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 		end
 		else if Hashtbl.mem o_e id_name then 
             let tid = Hashtbl.find o_e id_name in 
-            let te = exp_typecheck o_e m_e c_e exp in 
+            let te = exp_typecheck o_e m_e c_e assign_exp in 
             if is_subtype te tid then
                 te
             else begin
@@ -659,7 +659,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
         		list_type := exp_typecheck o_e m_e c_e e
     	) exps) ; 
     		!list_type
-    | Let(bindings, exp) ->
+    | Let(bindings, body_exp) ->
     	(* printf "Doing a Let\n" ; *)
 		let new_o = Hashtbl.copy o_e in  
 		List.iter(fun binding -> 
@@ -707,7 +707,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 				end
 				
 		) bindings;
-		exp_typecheck new_o m_e c_e exp
+		exp_typecheck new_o m_e c_e body_exp
 	| While(exp1, exp2) -> 
 		let t1 = exp_typecheck o_e m_e c_e exp1 in
 		if t1 <> Class("Bool") then begin
