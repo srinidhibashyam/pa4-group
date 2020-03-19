@@ -1,47 +1,32 @@
-README
-PA4c: The Semantic Analyzer
-Students: Bashyam Srinidhi & Micheal Kovar
+Students: 
+  Thân Việt Cường, 
+  Bashyam Srinidhi,
+  Micheal Kovar,
+  Alex Malyshev
 ------------------------------
-PA4 c
+PA4 - Semantic Analyzer
 -------------------------------
+
+Usage:
+  You can compile the program with the following command:
+    make
+  This will generate a checker-pa4.exe file. This can be run using:
+    ./checker-pa4 <input Cool ast file>
+  You can also run the program with a Cool file using the following command from the Makefile:
+    make test <input Cool file>
+  Lastly, you can run the above command against the reference compiler by doing:
+    make diff <input Cool file>
 
 Design decisions:
 
-The Cool AST file from the PA3 parser is read using few reader routines and converted to its Ocaml type representation consisting of list of cool classes(class,features,etc). The Cool base classes like Bool, IO, etc. are added to the list of user classes. 
+Our program follows the general process of reading in the Cool AST and converting it into our internal representation, going through the AST and ensuring that there are no declaration errors, then going through the AST and type checking everything, and finally outputing our new AST with type annotations. 
 
-The list of classes is iterated over and each class is type checked for inheritance related inconsistencies in class, method, and attribute.
+Our code for reading in the AST and storing it is fairly simple and follows the normal pattern we have for the lexing and parsing code seen before.
 
-After the completion of type checks, the list of classes is again iterated over to emit class map as per the required format.
+For our code to check the declaration of classes and methods for errors we first start by parsing the AST again to store parent-child relationships, which is determined using a simple topological sort, as well as what methods and attributes each class has. After we setup this data we then check the declaration of each class to ensure that things like invalid class names or class redeclations do not occur. We then go on to populate the object environment for each class with their attributes. After populating a class's attributes, we the move onto the next stage.
 
-In this version, the list of type-checks performed on the Cool AST file is as follows:
+After we populate a class's attributes and have ensured that the declaration of the class itself is fine, we go on to type check each method. For the type checking in here we recursively call our expression type checking method and make use of the method, object, and class (just stores the name of the class) environments to perform all of the nessacary type checking for each expression type. The only notable type checking tricks that we used is that all three of the Dispatch expressions use the same core helper method to check their arguments against the formal definitions and to check that the given method is present. Another notable expression in type checking is the Let expression. The main reason that the Let expression is interesting is that we had to populate a new object environment based upon the old object environment with all of the new variables that were present, so that the expressions after the Let expression were informed of the new varibles declared in it.
 
-1: Inherits undeclared class
-2: Inherits non-inheritable classes like String, Bool, and Int
-3: Object class's method illegal overrides like abort(), type_name(), and copy()
-4: Duplicate class declaration 
-5: Duplicate method declaration 
-6: No Main class
-7: No main method
-8: Illegal method redefines - different formal size
-9: Illegal method redefines - different formal types
-10: Redefining classes like Int, String, etc.
+After we complete all of the type checking we follow the same general strategy used for outputing tokens in PA2 and PA3 to output our completed type-checked AST. 
 
-
-List of files:
-  1: readme.txt: this README file
-  2: Source files: semantic.ml
-
-Instructions to run the program:
-  1: Run the Makefile: 
-  	Commands:  
-    To clean: make clean
-    To build: make   
-    Result: Creates semantic.exe, and semantic.o
-
-  2: Test the analyzer: semantic.exe
-  	Command:  
-    $ cool --parse file.cl
-    $ semantic.exe file.cl-ast
-
-References:
-1: Westley Weimer's - Video Guide - PA4c - OCaml at https://www.youtube.com/watch?v=Wa9zMygcv_M
+We believe that our Semantic Analyzer is currently feature complete (past some cleanup and optimaization) and should fufill all of the functional requirements, based upon our testing with our own test cases and the instructor provided ones.
