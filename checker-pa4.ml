@@ -641,11 +641,11 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
             printf "ERROR: %s: Type-check: undeclared variable %s\n"  id_location id_name;
             exit 1
         end
-	| If(predicate, then_exp, else_exp) ->
+	| If(conditional, then_exp, else_exp) ->
 		(* printf "Doing a If\n" ; *)
-		let predicate_type = exp_typecheck o_e m_e c_e predicate in
-    	if predicate_type <> (Class "Bool") then begin
-    		printf "ERROR: %s: Type-Check: predicate has type %s instead of Bool\n" exp.line_number (type_to_str predicate_type);
+		let conditional_type = exp_typecheck o_e m_e c_e conditional in
+    	if conditional_type <> (Class "Bool") then begin
+    		printf "ERROR: %s: Type-Check: conditional has type %s instead of Bool\n" exp.line_number (type_to_str conditional_type);
     		exit 1
     	end
     	else
