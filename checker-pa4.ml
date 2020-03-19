@@ -625,7 +625,7 @@ and exp_typecheck (o_e: obj_env) (m_e: method_env) (c_e: static_type)  (exp: exp
 	| Assign((id_location, id_name), assign_exp) ->
 		(* printf "Doing a Assign\n" ; *)
 		if id_name = "self" then begin
-			printf "ERROR: %s: Type-Check: Cannot assign to self variable\n"  id_location;
+			printf "ERROR: %s: Type-Check: Cannot assign to self\n"  id_location;
             exit 1
 		end
 		else if Hashtbl.mem o_e id_name then 
